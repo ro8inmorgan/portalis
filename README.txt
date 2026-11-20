@@ -1,4 +1,4 @@
-PORTALIS 1.0.0 — Cardputer / Cardputer ADV
+PORTALIS 1.1.0 — Cardputer / Cardputer ADV
 
 A standalone local Wi-Fi connection demo with a readable 240x135 interface.
 No internet uplink is required. Nothing starts broadcasting until you choose Start.
@@ -184,27 +184,27 @@ MAIN MENU, RADAR AND APPROVED PROBE TEST
 
   Probe settings share /portalis.json with the AP-name presets. A blank writable
   SD card gets this config automatically when mounted:
-    {"ap_names":["Portalis Demo","Portalis Guest","Portalis Workshop"],"cooldown_seconds":120,"notice_template":""}
+    {"ap_names":["Portalis Demo","Portalis Guest","Portalis Workshop"],"cooldown_seconds":120,"timeout_seconds":120,"notice_template":""}
   Existing files are preserved. For older installs, move cooldown_seconds and
   notice_template from probe-test.json into portalis.json; the old file is no
   longer read. Missing keys default to 120 seconds and no selected template.
   The config is limited to 4 KB. Cooldown range is 60-86400 seconds.
   Without a writable SD card, automatic config creation cannot succeed.
 
-  Probe test opens a setup menu before listening: Page, Start probe test,
+  Probe test opens a setup menu before listening: Page, Timeout, Start probe test,
   and Submissions. Use ;/. to move and Enter to select.
   Page opens the SD HTML picker. Choose Start
   probe test to begin. Stopping returns to this menu.
   R reloads SD while stopped, S starts/stops, H opens the log, and Esc exits.
   T opens the HTML picker while stopped; V opens saved form submissions.
-  While running, Enter reviews the approved scope.
   The selected template is saved separately from the Portal template, persists
   across reboots, and overrides notice_template. There is no built-in probe page;
   select an SD HTML file before starting. Every start reloads the config and chosen
   HTML from SD, so edits take effect. It never starts automatically.
-  The listener hops available 2.4 GHz channels and ignores unnamed probes and
-  requests outside the list. For an approved request it starts one open test AP
-  using that SSID. The AP stays available for at most 120 seconds from the
+  The listener hops available 2.4 GHz channels and ignores unnamed probes.
+  The current implementation accepts any nonempty parsed SSID; it does not
+  enforce an approved-name list. A matching probe starts one open test AP
+  using that SSID. The AP stays available for the configured timeout (120 seconds by default) from the
   attempt start, allowing time to enter feedback, then resumes listening.
   Open http://172.0.0.1 if needed. The configured notice_template is served
   with a one-use submission ticket. The supplied probe-notice.html is clearly
@@ -215,7 +215,7 @@ MAIN MENU, RADAR AND APPROVED PROBE TEST
   read in Submissions on the device. A save failure displays an error and
   allows retry while the AP remains available. No IP or MAC is stored with feedback.
 
-  A device's probe MAC enters cooldown after an attempt, across all approved
+  A device's probe MAC enters cooldown after an attempt, across
   SSIDs. Cooldowns occupy 32 RAM slots; when full, no new attempt starts until
   a slot expires. No cooldown entry is evicted early. Stopping/restarting the
   test resets its session, counters and cooldowns. There is no persistent MAC log.
@@ -245,3 +245,11 @@ CUSTOM PROBE NOTICE
   are not sent. Each page ticket allows one successful submission. To submit
   another form, reopen the page while the test AP is still active.
   Template scripts and external resources remain blocked.
+
+KARMA TIMEOUT
+  Before starting, select Timeout. Comma/slash decrease/increase by 30 seconds;
+  Enter increases by 30 seconds. Range: 30-600 seconds; default: 120 seconds.
+  This is the total lifetime of each temporary AP, including time after joining.
+  A connection does not reset or extend the countdown. Cooldown is independent.
+  Menu changes are saved on the device and override timeout_seconds in portalis.json.
+  The chosen value survives template selection, reloads, and reboots.

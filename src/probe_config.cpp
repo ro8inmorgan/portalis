@@ -39,6 +39,13 @@ bool portalis::loadProbeConfig(ProbeConfig& config, std::string& error, const st
         if (candidate.cooldownSeconds < 60 || candidate.cooldownSeconds > 86400) { error = "Cooldown must be 60 to 86400 seconds."; return false; }
     }
 
+    if (!doc["timeout_seconds"].isNull()) {
+        if (!doc["timeout_seconds"].is<uint32_t>()) { error = "Timeout must be 30 to 600 seconds."; return false; }
+        candidate.timeoutSeconds = doc["timeout_seconds"].as<uint32_t>();
+        if (candidate.timeoutSeconds < ProbeConfig::minTimeoutSeconds || candidate.timeoutSeconds > ProbeConfig::maxTimeoutSeconds) {
+            error = "Timeout must be 30 to 600 seconds."; return false;
+        }
+    }
     std::string path = selectedTemplate.value_or("");
     if (!selectedTemplate && !doc["notice_template"].isNull()) {
         if (!doc["notice_template"].is<const char*>()) { error = "notice_template must be an HTML path."; return false; }

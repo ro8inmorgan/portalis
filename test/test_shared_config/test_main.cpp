@@ -13,6 +13,7 @@ void test_fresh_card_creates_unified_config_without_template() {
     JsonDocument doc;
     TEST_ASSERT_FALSE(deserializeJson(doc, SD.nodes.at("/portalis.json")->content));
     TEST_ASSERT_EQUAL(120, doc["cooldown_seconds"].as<int>());
+    TEST_ASSERT_EQUAL(120, doc["timeout_seconds"].as<int>());
     TEST_ASSERT_EQUAL_STRING("", doc["notice_template"].as<const char*>());
     PortalConfig portal; ProbeConfig probe; std::string error;
     TEST_ASSERT_TRUE(storage.loadConfig(portal, error));

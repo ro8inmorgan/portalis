@@ -90,6 +90,7 @@ bool ProbeTest::listen() {
 }
 bool ProbeTest::start(const ProbeConfig& config) {
     if (active_ || config.noticePath.empty() || config.noticeHtml.empty() || !config.permits("test") ||
+        config.timeoutSeconds < ProbeConfig::minTimeoutSeconds || config.timeoutSeconds > ProbeConfig::maxTimeoutSeconds ||
         config.cooldownSeconds < 60 || config.cooldownSeconds > 86400 || (WiFi.getMode() & WIFI_MODE_AP)) return false;
     if (!queue_) queue_ = xQueueCreate(8, sizeof(ProbeCandidate));
     if (!queue_) return false;

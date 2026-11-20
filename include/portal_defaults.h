@@ -10,6 +10,7 @@ inline constexpr const char kDefaultPortalConfig[] = R"JSON({
     "Portalis Workshop"
   ],
   "cooldown_seconds": 120,
+  "timeout_seconds": 120,
   "notice_template": ""
 }
 )JSON";

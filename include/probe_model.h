@@ -17,6 +17,8 @@ struct ProbeConfig {
     std::array<std::string, 16> ssids{};
     size_t count = 0;
     uint32_t cooldownSeconds = 120;
+    uint32_t timeoutSeconds = 120;
+    static constexpr uint32_t minTimeoutSeconds = 30, maxTimeoutSeconds = 600;
     std::string noticeHtml; // Loaded once from the optional SD notice template.
     std::string noticePath;
     bool permits(const char* ssid) const {
@@ -52,13 +54,14 @@ class ProbeSchedule {
     std::array<Cooldown, 32> backlog_{};
     ProbeCandidate target_{};
     bool active_ = false, joined_ = false;
-    uint32_t started_ = 0, joinedAt_ = 0;
+    uint32_t started_ = 0, timeoutMs_ = 120000;
     int slot_ = -1;
 public:
-    static constexpr uint32_t waitMs = 120000, noticeMs = 120000;
     void reset() { *this = {}; }
     bool begin(const ProbeConfig& scope, const ProbeCandidate& candidate, uint32_t now) {
-        if (active_ || !scope.permits(candidate.ssid)) return false;
+        if (active_ || !scope.permits(candidate.ssid) ||
+            scope.timeoutSeconds < ProbeConfig::minTimeoutSeconds ||
+            scope.timeoutSeconds > ProbeConfig::maxTimeoutSeconds) return false;
         int free = -1;
         for (size_t i = 0; i < backlog_.size(); ++i) {
             const auto& item = backlog_[i];
@@ -68,21 +71,20 @@ public:
         }
         // Keep every unexpired entry; do not evict and immediately retry devices.
         if (free < 0) return false;
+        timeoutMs_ = scope.timeoutSeconds * 1000U;
         slot_ = free; target_ = candidate; started_ = now; joined_ = false; active_ = true;
         return true;
     }
-    bool observeConnection(uint32_t now) {
+    bool observeConnection(uint32_t /*now*/) {
         if (!active_ || joined_) return false;
-        joined_ = true; joinedAt_ = now; return true;
+        joined_ = true; return true;
     }
     bool finished(uint32_t now) const {
-        return active_ && (static_cast<uint32_t>(now - started_) >= waitMs ||
-                           (joined_ && static_cast<uint32_t>(now - joinedAt_) >= noticeMs));
+        return active_ && static_cast<uint32_t>(now - started_) >= timeoutMs_;
     }
     uint32_t remaining(uint32_t now) const {
         if (!active_ || finished(now)) return 0;
-        uint32_t remaining = waitMs - static_cast<uint32_t>(now - started_);
-        if (joined_) remaining = std::min(remaining, noticeMs - static_cast<uint32_t>(now - joinedAt_));
+        const uint32_t remaining = timeoutMs_ - static_cast<uint32_t>(now - started_);
         return (remaining + 999) / 1000;
     }
     void end(uint32_t now) {

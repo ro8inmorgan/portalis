@@ -32,6 +32,42 @@ void test_deadlines_and_wrap() {
         TEST_ASSERT_EQUAL(1, s.remaining(start + 119000)); TEST_ASSERT_TRUE(s.finished(start + 120000));
     }
 }
+void test_configurable_total_timeout() {
+    for (uint32_t seconds : {30U, 120U, 300U, 600U}) {
+        for (uint32_t start : {0U, UINT32_MAX - 100U}) {
+            auto config = scope(); config.timeoutSeconds = seconds;
+            ProbeSchedule schedule;
+            TEST_ASSERT_TRUE(schedule.begin(config, candidate(), start));
+            TEST_ASSERT_EQUAL(seconds, schedule.remaining(start));
+            // A join near the deadline neither resets the timer nor applies an old 120s cap.
+            TEST_ASSERT_TRUE(schedule.observeConnection(start + seconds * 1000 - 500));
+            config.timeoutSeconds = 30; // active attempt keeps its initial timeout
+            TEST_ASSERT_EQUAL(1, schedule.remaining(start + seconds * 1000 - 1));
+            TEST_ASSERT_FALSE(schedule.finished(start + seconds * 1000 - 1));
+            TEST_ASSERT_TRUE(schedule.finished(start + seconds * 1000));
+            TEST_ASSERT_EQUAL(0, schedule.remaining(start + seconds * 1000));
+        }
+    }
+    for (uint32_t seconds : {0U, 29U, 601U, UINT32_MAX}) {
+        auto config = scope(); config.timeoutSeconds = seconds;
+        ProbeSchedule schedule;
+        TEST_ASSERT_FALSE(schedule.begin(config, candidate(), 0));
+    }
+}
+void test_timeout_config_validation() {
+    ProbeConfig config; std::string error;
+    for (const char* value : {"0", "29", "601", "-1", "4294967295", "1.5", "true", "\"120\""}) {
+        SD.seed("/portalis.json", std::string("{\"timeout_seconds\":") + value + "}");
+        TEST_ASSERT_FALSE(loadProbeConfig(config, error));
+    }
+    SD.seed("/portalis.json", R"({"timeout_seconds":300,"cooldown_seconds":90})");
+    TEST_ASSERT_TRUE(loadProbeConfig(config, error));
+    TEST_ASSERT_EQUAL(300, config.timeoutSeconds);
+    TEST_ASSERT_EQUAL(90, config.cooldownSeconds);
+    SD.seed("/portalis.json", "{}");
+    TEST_ASSERT_TRUE(loadProbeConfig(config, error));
+    TEST_ASSERT_EQUAL(120, config.timeoutSeconds);
+}
 void test_cooldown_cannot_be_bypassed_by_another_ssid_or_full_cache() {
     ProbeSchedule s;
     TEST_ASSERT_TRUE(s.begin(scope(), candidate(), 0)); s.end(120000);
@@ -63,4 +99,4 @@ void test_notice_and_bounded_history() {
     TEST_ASSERT_EQUAL(32, status.eventCount); TEST_ASSERT_EQUAL(39, status.events[0].seconds);
     TEST_ASSERT_EQUAL(8, status.events[31].seconds);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_bounded_probe_parser); RUN_TEST(test_deadlines_and_wrap); RUN_TEST(test_cooldown_cannot_be_bypassed_by_another_ssid_or_full_cache); RUN_TEST(test_config_rejects_invalid_input); RUN_TEST(test_notice_and_bounded_history); return UNITY_END(); }
+int main() { UNITY_BEGIN(); RUN_TEST(test_configurable_total_timeout); RUN_TEST(test_timeout_config_validation); RUN_TEST(test_bounded_probe_parser); RUN_TEST(test_deadlines_and_wrap); RUN_TEST(test_cooldown_cannot_be_bypassed_by_another_ssid_or_full_cache); RUN_TEST(test_config_rejects_invalid_input); RUN_TEST(test_notice_and_bounded_history); return UNITY_END(); }

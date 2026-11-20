@@ -26,6 +26,7 @@ UiSettings uiSettings;
 Screen settingsReturn = Screen::Setup;
 Screen templatesReturn = Screen::Setup;
 std::optional<std::string> probeTemplatePath;
+std::optional<uint32_t> probeTimeoutSeconds;
 std::vector<SubmissionEntry> submissions;
 SubmissionView submission;
 Screen submissionsReturn = Screen::Setup;
@@ -112,7 +113,16 @@ void openSubmissions(Screen back) {
 }
 void reloadProbeConfig() {
     std::string message;
-    if (!loadProbeConfig(probeConfig, message, probeTemplatePath)) notice(message, Screen::Probe);
+    if (!loadProbeConfig(probeConfig, message, probeTemplatePath)) { notice(message, Screen::Probe); return; }
+    if (probeTimeoutSeconds) probeConfig.timeoutSeconds = *probeTimeoutSeconds;
+}
+void adjustProbeTimeout(int direction) {
+    const int seconds = std::max(static_cast<int>(ProbeConfig::minTimeoutSeconds),
+        std::min(static_cast<int>(ProbeConfig::maxTimeoutSeconds), static_cast<int>(probeConfig.timeoutSeconds) + direction * 30));
+    probeConfig.timeoutSeconds = seconds;
+    probeTimeoutSeconds = seconds;
+    if (preferencesReady && preferences.putUInt("probe_timeout", seconds) != sizeof(uint32_t))
+        notice("Timeout changed; could not save it.", Screen::Probe);
 }
 void startProbe() {
     reloadProbeConfig();
@@ -175,13 +185,15 @@ void handleKey(char key) {
             break;
         case Screen::Probe:
             if (escape || back) { probe.stop(); openHome(2); }
-            else if (!probe.running() && up) selected = (selected + 2) % 3;
-            else if (!probe.running() && down) selected = (selected + 1) % 3;
+            else if (!probe.running() && up) selected = (selected + 3) % 4;
+            else if (!probe.running() && down) selected = (selected + 1) % 4;
+            else if (!probe.running() && selected == 1 && (key == ',' || key == '/')) adjustProbeTimeout(key == ',' ? -1 : 1);
             else if (enter) {
                 if (probe.running()) show(Screen::ProbeScope);
                 else if (selected == 0) { templatesReturn = Screen::Probe; browse("/"); }
-                else if (selected == 1) startProbe();
-                else if (selected == 2) openSubmissions(Screen::Probe);
+                else if (selected == 1) adjustProbeTimeout(1);
+                else if (selected == 2) startProbe();
+                else if (selected == 3) openSubmissions(Screen::Probe);
             }
             else if (key == 'h' || key == 'H') show(Screen::ProbeHistory);
             else if ((key == 't' || key == 'T') && !probe.running()) {
@@ -261,6 +273,7 @@ void handleKey(char key) {
                     std::string message;
                     if (!loadProbeConfig(candidate, message, entry.path)) notice(message, Screen::Templates);
                     else {
+                        if (probeTimeoutSeconds) candidate.timeoutSeconds = *probeTimeoutSeconds;
                         probeConfig = std::move(candidate);
                         probeTemplatePath = entry.path;
                         if (preferencesReady) preferences.putString("probe_template", probeTemplatePath->c_str());
@@ -429,6 +442,9 @@ void setup() {
         // A missing or old empty preference uses notice_template in portalis.json.
         const std::string savedProbeTemplate = preferences.getString("probe_template", "\n").c_str();
         if (savedProbeTemplate != "\n" && !savedProbeTemplate.empty()) probeTemplatePath = savedProbeTemplate;
+        const uint32_t savedProbeTimeout = preferences.getUInt("probe_timeout", 0);
+        if (savedProbeTimeout >= ProbeConfig::minTimeoutSeconds && savedProbeTimeout <= ProbeConfig::maxTimeoutSeconds)
+            probeTimeoutSeconds = savedProbeTimeout;
         uiSettings.accent = preferences.getUChar("ui_accent", 0);
         uiSettings.background = preferences.getUChar("ui_bg", 0);
         uiSettings.ledBrightness = preferences.getUChar("led_bright", 80);

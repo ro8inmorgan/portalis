@@ -131,31 +131,67 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 const int cx = 120 + static_cast<int>(delta * 91);
                 const int cy = 58 + static_cast<int>((1.0f - focus) * 4);
                 const int width = 54 + static_cast<int>(focus * 14);
-                const uint16_t fill = blendColor(PANEL, ACCENT, focus * 0.18f);
+                const float breathe = 0.5f + 0.5f * std::sin((v.now % 3200) * (6.28318530718f / 3200.0f));
+                const uint16_t fill = blendColor(PANEL, ACCENT, focus * (0.14f + breathe * 0.06f));
                 const uint16_t ink = blendColor(MUTED, ACCENT, focus);
                 c.fillRoundRect(cx - width / 2, cy - 28, width, 56, 9, fill);
                 if (icon == 0) {
+                    // A light band travels through the doorway and fades at its edges.
+                    const float phase = (v.now % 2600) / 2600.0f;
                     c.fillRoundRect(cx - 15, cy - 20, 30, 40, 8, ink);
                     c.fillRoundRect(cx - 11, cy - 16, 22, 36, 5, fill);
-                    c.fillCircle(cx + 6, cy + 2, 2, FG);
+                    for (int trail = 0; trail < 5; ++trail) {
+                        const int y = -24 + static_cast<int>(phase * 52) - trail;
+                        if (y >= -12 && y <= 16) {
+                            const float fade = std::min(1.0f, std::min((y + 13) / 6.0f, (17 - y) / 6.0f));
+                            c.drawLine(cx - 8, cy + y, cx + 8, cy + y,
+                                       blendColor(fill, ink, fade * (1.0f - trail / 5.0f)));
+                        }
+                    }
+                    c.fillCircle(cx + 6, cy + 2, 2, blendColor(ink, FG, breathe));
                     c.drawLine(cx - 20, cy + 20, cx + 20, cy + 20, ink);
                 } else if (icon == 1) {
-                    c.drawCircle(cx, cy, 19, ink); c.drawCircle(cx, cy, 11, ink);
-                    const float angle = (v.now % 4000) * (6.28318530718f / 4000.0f);
-                    c.drawLine(cx, cy, cx + static_cast<int>(19 * std::cos(angle)), cy + static_cast<int>(19 * std::sin(angle)), ink);
-                    c.fillCircle(cx - 9, cy - 6, 2, FG); c.fillCircle(cx + 8, cy + 10, 2, ink);
+                    constexpr float tau = 6.28318530718f;
+                    const float angle = (v.now % 4000) * (tau / 4000.0f);
+                    c.drawCircle(cx, cy, 19, ink);
+                    c.drawCircle(cx, cy, 11, blendColor(fill, ink, 0.45f));
+                    for (int trail = 5; trail >= 0; --trail) {
+                        const float sweep = angle - trail * 0.11f;
+                        c.drawLine(cx, cy, cx + static_cast<int>(18 * std::cos(sweep)),
+                                   cy + static_cast<int>(18 * std::sin(sweep)),
+                                   blendColor(fill, ink, 1.0f - trail / 6.0f));
+                    }
+                    for (int blip = 0; blip < 3; ++blip) {
+                        const float bearing = 0.8f + blip * 2.1f;
+                        const float age = std::fmod(angle - bearing + tau, tau) / tau;
+                        const float glow = std::max(0.0f, 1.0f - age * 3.0f);
+                        const int radius = blip == 1 ? 9 : 14;
+                        c.fillCircle(cx + static_cast<int>(radius * std::cos(bearing)),
+                                     cy + static_cast<int>(radius * std::sin(bearing)), 1 + (glow > 0.6f),
+                                     blendColor(ink, FG, glow));
+                    }
                 } else if (icon == 2) {
-                    c.drawCircle(cx, cy - 6, 16, ink);
-                    c.drawCircle(cx, cy - 6, 9, ink);
-                    c.fillCircle(cx, cy - 6, 3, FG);
-                    c.drawLine(cx, cy - 2, cx, cy + 20, ink);
+                    // Two staggered rings expand from the antenna and fade away.
+                    for (int ring = 0; ring < 2; ++ring) {
+                        const float phase = ((v.now % 2400 + ring * 1200) % 2400) / 2400.0f;
+                        c.drawCircle(cx, cy - 3, 4 + static_cast<int>(phase * 18),
+                                     blendColor(fill, ink, 1.0f - phase));
+                    }
+                    c.drawLine(cx, cy + 1, cx, cy + 20, ink);
                     c.drawLine(cx - 12, cy + 20, cx + 12, cy + 20, ink);
+                    c.fillCircle(cx, cy - 3, 3, blendColor(ink, FG, breathe));
                 } else {
+                    const float rotation = (v.now % 10000) * (6.28318530718f / 10000.0f);
                     c.drawCircle(cx, cy, 14, ink); c.drawCircle(cx, cy, 7, ink);
                     for (int tooth = 0; tooth < 8; ++tooth) {
-                        const float angle = tooth * 0.785398163f;
+                        const float angle = rotation + tooth * 0.785398163f;
                         c.drawLine(cx + static_cast<int>(14 * std::cos(angle)), cy + static_cast<int>(14 * std::sin(angle)),
                                    cx + static_cast<int>(21 * std::cos(angle)), cy + static_cast<int>(21 * std::sin(angle)), ink);
+                    }
+                    for (int spoke = 0; spoke < 3; ++spoke) {
+                        const float angle = rotation + spoke * 2.094395102f;
+                        c.drawLine(cx + static_cast<int>(8 * std::cos(angle)), cy + static_cast<int>(8 * std::sin(angle)),
+                                   cx + static_cast<int>(12 * std::cos(angle)), cy + static_cast<int>(12 * std::sin(angle)), ink);
                     }
                 }
             }
@@ -243,12 +279,13 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             if (!v.probeRunning) {
                 const std::string path = v.probeConfig ? v.probeConfig->noticePath : "";
                 const std::string pageName = path.empty() ? "Select HTML file" : path.substr(path.find_last_of('/') + 1);
-                const std::array<std::string, 3> labels{{
-                    "Page: " + pageName,
-                    "Start probe test", "Submissions"}};
-                for (int row = 0; row < 3; ++row)
+                const std::array<std::string, 4> labels{{
+                    "Portal: " + pageName,
+                    "Timeout: " + std::to_string(v.probeConfig ? v.probeConfig->timeoutSeconds : 120) + "s",
+                    "Start KARMA", "Submissions"}};
+                for (int row = 0; row < 4; ++row)
                     selectedRow(c, labels[row], row, row == v.selected, elapsed);
-                footer(c, ";/. Move ENT Select R SD");
+                footer(c, v.selected == 1 ? ",/ Adjust ENT +30s" : ";/. Move ENT Select R SD");
                 break;
             }
             const ProbeStatus empty;

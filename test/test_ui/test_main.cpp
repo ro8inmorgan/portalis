@@ -243,7 +243,7 @@ void test_carousel_animation_wrap_and_layout() {
 }
 void test_probe_screens_fit() {
     M5Canvas canvas; ViewModel view; ProbeConfig config; ProbeStatus status;
-    view.probeConfig = &config; view.probeStatus = &status;
+    view.probeConfig = &config; view.probeStatus = &status; config.timeoutSeconds = 600;
     config.count = 16;
     for (auto& name : config.ssids) name = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456";
     strcpy(status.ssid, config.ssids[0].c_str());
