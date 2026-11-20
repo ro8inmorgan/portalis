@@ -121,7 +121,7 @@ void test_settings_controls_bounds_and_color_preview() {
                 drawUi(canvas, view);
                 TEST_ASSERT_EQUAL(kAccents[accent].color, canvas.texts[0].color);
             }
-    view.screen = Screen::Home; view.selected = 3; view.carouselPosition = 3; drawUi(canvas, view);
+    view.screen = Screen::Home; view.selected = SettingsHome; view.carouselPosition = SettingsHome; drawUi(canvas, view);
     bool found = false;
     for (const auto& text : canvas.texts) if (text.value == "Settings") found = true;
     TEST_ASSERT_TRUE(found); TEST_ASSERT_EQUAL(0, canvas.violations);
@@ -232,9 +232,9 @@ void test_carousel_animation_wrap_and_layout() {
     motion.move(1, 340); TEST_ASSERT_EQUAL_FLOAT(0, motion.position(580));
     motion.reset(2, UINT32_MAX - 100); motion.move(1, UINT32_MAX - 100);
     TEST_ASSERT_EQUAL_FLOAT(3, motion.position(139));
-    for (int selected = 0; selected < 4; ++selected) {
+    for (int selected = 0; selected < CarouselMotion::count; ++selected) {
         view.selected = selected;
-        for (int frame = -50; frame < 150; ++frame) {
+        for (int frame = -50; frame < CarouselMotion::count*50+50; ++frame) {
             view.carouselPosition = frame / 50.0f; view.now = frame * 50;
             drawUi(canvas, view);
         }
@@ -262,4 +262,24 @@ void test_probe_screens_fit() {
     }
     TEST_ASSERT_EQUAL(0, canvas.violations);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }
+void test_wifi_tools_screens_fit() {
+    M5Canvas canvas;ViewModel v;RadarSnapshot scan;SignalHistory signal;NetworkChanges changes;NetworkStatus net;
+    v.radar=&scan;v.signal=&signal;v.changes=&changes;v.network=&net;
+    strcpy(signal.target.ssid,"ABCDEFGHIJKLMNOPQRSTUVWXYZ123456");
+    for (int i=0;i<60;++i) { signal.samples.add(i%4 ? -30-i : kMissingSample);net.ping.add(i%4,1000); }
+    strcpy(net.address,"192.168.100.200");strcpy(net.target,"192.168.100.200");
+    v.draft="192.168.100.200";v.networkName=signal.target.ssid;v.passwordLength=64;
+    for (int i=0;i<32;++i) { RadarAccessPoint ap;ap.id=i+1;strcpy(ap.ssid,signal.target.ssid);ap.channel=1+i%14;scan.add(ap);scan.tally(ap); }
+    scan.generation=1;changes.update(scan);scan.generation=2;scan.points[0].channel=14;changes.update(scan);
+    for (auto screen : {Screen::Channels,Screen::ToolNetworks,Screen::Signal,Screen::Changes,Screen::NetworkPassword,Screen::Diagnostics,Screen::Ping,Screen::PingTarget,Screen::NetworkStopping}) {
+        v.screen=screen;
+        for (int selected=0;selected<32;++selected) {
+            v.selected=selected;
+            for (auto phase : {NetworkPhase::Connecting,NetworkPhase::Checking,NetworkPhase::Ready,NetworkPhase::Failed}) {
+                net.phase=phase;v.channelOverlapView=selected%2;drawUi(canvas,v);
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL(0,canvas.violations);
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }

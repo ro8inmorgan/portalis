@@ -56,4 +56,15 @@ void test_scan_failure_retry_hidden_names_and_cleanup() {
     scanner.poll(); TEST_ASSERT_EQUAL_STRING("Hidden 0007", scanner.snapshot().points[0].ssid);
     scanner.stop(); scanner.start(); scanner.stop(); TEST_ASSERT_EQUAL(WIFI_OFF, WiFi.currentMode);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_signal_radius_is_bounded_and_monotonic); RUN_TEST(test_strongest_32_deduplication_and_selection); RUN_TEST(test_scanner_is_async_passive_and_does_not_interrupt_ap); RUN_TEST(test_completed_scan_free_results_and_refreshes_without_old_dots); RUN_TEST(test_scan_failure_retry_hidden_names_and_cleanup); return UNITY_END(); }
+void test_track_weak_ap_outside_top32_and_tally_all() {
+    WifiScanner scanner;scanner.start();scanner.track(1);
+    for (int i=0;i<40;++i) { wifi_ap_record_t ap;ap.bssid[5]=i+1;ap.rssi=-95+i;ap.primary=6;strcpy(reinterpret_cast<char*>(ap.ssid),"Lab");fakeResults.push_back(ap); }
+    WiFi.scanState=40;scanner.poll();
+    TEST_ASSERT_EQUAL(-1,scanner.snapshot().find(1));
+    TEST_ASSERT_TRUE(scanner.snapshot().trackedFound);TEST_ASSERT_EQUAL(-95,scanner.snapshot().trackedPoint.rssi);
+    TEST_ASSERT_EQUAL(40,scanner.snapshot().channelCounts[6]);
+    TEST_ASSERT_TRUE(scanner.snapshot().points[0].connectable);
+    TEST_ASSERT_EQUAL_STRING("Lab",scanner.snapshot().points[0].rawSsid);
+    scanner.stop();
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_track_weak_ap_outside_top32_and_tally_all); RUN_TEST(test_signal_radius_is_bounded_and_monotonic); RUN_TEST(test_strongest_32_deduplication_and_selection); RUN_TEST(test_scanner_is_async_passive_and_does_not_interrupt_ap); RUN_TEST(test_completed_scan_free_results_and_refreshes_without_old_dots); RUN_TEST(test_scan_failure_retry_hidden_names_and_cleanup); return UNITY_END(); }

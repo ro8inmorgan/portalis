@@ -6,12 +6,24 @@
 #include "storage.h"
 #include "ui.h"
 #include "wifi_scanner.h"
+#include "network_tools.h"
+#include "wifi_profiles.h"
 #include "probe_test.h"
 
 using namespace portalis;
 namespace {
 Portal portal;
 WifiScanner scanner;
+NetworkTools networkTools;
+WifiProfiles wifiProfiles;
+Preferences wifiPreferences;
+bool wifiPreferencesReady=false;
+WifiProfile pendingProfile;
+SignalHistory signalHistory;
+NetworkChanges networkChanges;
+RadarAccessPoint networkChoice;
+int toolHomeIndex=ChannelsHome;
+bool channelOverlapView=false;
 ProbeTest probe;
 ProbeConfig probeConfig;
 CarouselMotion carousel;
@@ -133,6 +145,39 @@ void startProbe() {
     if (!probe.start(probeConfig)) notice("Probe test could not start. Try again.", Screen::Probe);
     else show(Screen::Probe);
 }
+bool saveWifiProfiles() {
+    if (!wifiPreferencesReady) return false;
+    const auto json=wifiProfiles.serialize();
+    return wifiPreferences.putString("profiles",json.c_str())==json.size();
+}
+void clearPendingProfile() {
+    std::fill(pendingProfile.password.begin(),pendingProfile.password.end(),'\0'); pendingProfile={};
+}
+void clearNetworkPassword() { std::fill(draft.begin(),draft.end(),'\0'); draft.clear(); }
+void stopWifiTool() {
+    clearNetworkPassword(); clearPendingProfile(); scanner.stop(); networkTools.stop();
+    if (networkTools.busy()) show(Screen::NetworkStopping);
+    else openHome(toolHomeIndex);
+}
+void openWifiTool(int index) {
+    toolHomeIndex=index;
+    if (portal.running() || probe.running() || networkTools.busy()) {
+        notice("Stop the active Wi-Fi mode first.",Screen::Home); return;
+    }
+    if (!scanner.start()) { notice("Could not start Wi-Fi scan.",Screen::Home); return; }
+    if (index==ChannelsHome) show(Screen::Channels);
+    else if (index==ChangesHome) { networkChanges.reset(); show(Screen::Changes); }
+    else show(Screen::ToolNetworks);
+}
+void joinToolNetwork() {
+    scanner.stop();
+    const bool started=networkTools.begin(networkChoice,draft,toolHomeIndex==PingHome);
+    clearPendingProfile();
+    if (started) pendingProfile={networkChoice.rawSsid,draft};
+    clearNetworkPassword();
+    if (!started) { notice("Could not join network.",Screen::Home); return; }
+    show(toolHomeIndex==PingHome ? Screen::Ping : Screen::Diagnostics);
+}
 void handleKey(char key) {
     const bool enter = key == '\n', back = key == '\b', escape = key == '`';
     const bool up = key == ';', down = key == '.';
@@ -155,8 +200,83 @@ void handleKey(char key) {
                     if (scanner.start()) show(Screen::Radar);
                     else notice("Stop the portal before scanning Wi-Fi.", Screen::Home);
                 } else if (selected == 2) { show(Screen::Probe); reloadProbeConfig(); }
-                else openSettings(Screen::Home);
+                else if (selected == SettingsHome) openSettings(Screen::Home);
+                else openWifiTool(selected);
             }
+            break;
+        case Screen::Channels:
+            if (escape || back) stopWifiTool();
+            else if (enter) channelOverlapView=!channelOverlapView;
+            else if (up) selected=(selected+13)%14;
+            else if (down) selected=(selected+1)%14;
+            else if (key=='r' || key=='R') scanner.refresh();
+            break;
+        case Screen::ToolNetworks:
+            if (escape || back) { stopWifiTool(); break; }
+            if (key=='r' || key=='R') scanner.refresh();
+            if (up && selected>0) --selected;
+            if (down && selected+1<static_cast<int>(scanner.snapshot().count)) ++selected;
+            if ((key=='f' || key=='F') && toolHomeIndex!=SignalHome && selected>=0 && selected<static_cast<int>(scanner.snapshot().count)) {
+                const auto& ap=scanner.snapshot().points[selected];
+                if (wifiProfiles.forget(ap.rawSsid) && !saveWifiProfiles()) notice("Forgot for now; save failed.",Screen::ToolNetworks);
+            }
+            if (enter && selected>=0 && selected<static_cast<int>(scanner.snapshot().count)) {
+                networkChoice=scanner.snapshot().points[selected];
+                if (toolHomeIndex==SignalHome) {
+                    signalHistory.select(networkChoice,scanner.snapshot().generation);
+                    scanner.track(networkChoice.id); scanner.refresh(); show(Screen::Signal);
+                } else if (!networkChoice.connectable) {
+                    notice("Choose a visible open or personal WPA network.",Screen::ToolNetworks);
+                } else {
+                    clearNetworkPassword();
+                    if (!std::strcmp(networkChoice.security,"OPEN")) joinToolNetwork();
+                    else {
+                        const int saved=wifiProfiles.find(networkChoice.rawSsid);
+                        if (saved>=0 && !wifiProfiles.entries[saved].password.empty()) {
+                            draft=wifiProfiles.entries[saved].password; joinToolNetwork();
+                        } else show(Screen::NetworkPassword);
+                    }
+                }
+            }
+            break;
+        case Screen::Signal:
+            if (escape || back) stopWifiTool();
+            else if (enter) { scanner.track(0); show(Screen::ToolNetworks); }
+            else if (key=='r' || key=='R') scanner.refresh();
+            break;
+        case Screen::Changes:
+            if (escape || back) stopWifiTool();
+            else if (up && selected>0) --selected;
+            else if (down && selected+1<static_cast<int>(networkChanges.count)) ++selected;
+            else if (key=='r' || key=='R') scanner.refresh();
+            else if (key=='c' || key=='C') networkChanges.reset();
+            break;
+        case Screen::NetworkPassword:
+            if (escape) stopWifiTool();
+            else if (back) { if (!draft.empty()) { draft.back()='\0'; draft.pop_back(); } }
+            else if (enter) {
+                if (!validWifiPassword(draft)) notice("Use 8-63 characters or a 64-digit hex key.",Screen::NetworkPassword);
+                else joinToolNetwork();
+            } else if (key>=32 && key<=126 && draft.size()<64) draft+=key;
+            break;
+        case Screen::Diagnostics:
+        case Screen::Ping:
+            if (escape || back) stopWifiTool();
+            else if (key=='r' || key=='R') networkTools.refresh();
+            else if (screen==Screen::Ping && networkTools.status().phase==NetworkPhase::Ready) {
+                if (key=='p' || key=='P') networkTools.togglePause();
+                else if (key=='t' || key=='T') { draft=networkTools.status().target; show(Screen::PingTarget); }
+            }
+            break;
+        case Screen::PingTarget:
+            if (escape) { draft.clear(); show(Screen::Ping); }
+            else if (back) { if (!draft.empty()) draft.pop_back(); }
+            else if (enter) {
+                if (!networkTools.setTarget(draft)) notice("Enter a valid IPv4 target while connected.",Screen::PingTarget);
+                else { draft.clear(); show(Screen::Ping); }
+            } else if (((key>='0' && key<='9') || key=='.') && draft.size()<15) draft+=key;
+            break;
+        case Screen::NetworkStopping:
             break;
         case Screen::Setup:
             if (escape || back) { openHome(); break; }
@@ -216,7 +336,7 @@ void handleKey(char key) {
         }
         case Screen::Settings:
             if (escape || back) {
-                if (saveSettings()) { if (settingsReturn == Screen::Home) openHome(3); else show(settingsReturn); }
+                if (saveSettings()) { if (settingsReturn == Screen::Home) openHome(SettingsHome); else show(settingsReturn); }
                 else notice("Settings active, but could not save to device.", settingsReturn);
                 break;
             }
@@ -355,6 +475,10 @@ void render() {
     ViewModel view;
     view.carouselPosition = carousel.position(millis());
     view.radar = &scanner.snapshot();
+    view.signal=&signalHistory; view.changes=&networkChanges; view.network=&networkTools.status();
+    view.networkName=networkChoice.ssid; view.passwordLength=draft.size();
+    view.networkPickerCanJoin=toolHomeIndex!=SignalHome; view.channelOverlapView=channelOverlapView;
+    for (size_t i=0;i<scanner.snapshot().count;++i) view.rememberedNetworks[i]=wifiProfiles.find(scanner.snapshot().points[i].rawSsid)>=0;
     view.probeConfig = &probeConfig; view.probeStatus = &probe.status(); view.probeRunning = probe.running();
     view.settings = uiSettings;
     view.screen = screen; view.ssid = ssid.c_str(); view.draft = draft.c_str();
@@ -434,6 +558,8 @@ void setup() {
     canvas.setColorDepth(8);
     canvas.setBuffer(frameBuffer, 240, 135, 8);
     WiFi.mode(WIFI_OFF);
+    wifiPreferencesReady=wifiPreferences.begin("portalis-net",false);
+    if (wifiPreferencesReady) wifiProfiles.load(wifiPreferences.getString("profiles", "").c_str());
     preferencesReady = preferences.begin("portalis", false);
     if (preferencesReady) {
         const std::string saved = preferences.getString("ssid", "Portalis Demo").c_str();
@@ -483,12 +609,24 @@ void loop() {
     pollKeyboard();
     portal.poll();
     probe.poll();
+    networkTools.poll();
+    if (!pendingProfile.ssid.empty()) {
+        const auto& connection=networkTools.status();
+        if (connection.dhcp==CheckState::Pass && (connection.phase==NetworkPhase::Ready || connection.phase==NetworkPhase::Checking)) {
+            wifiProfiles.remember(pendingProfile.ssid,pendingProfile.password);
+            const bool saved=saveWifiProfiles(); clearPendingProfile();
+            if (!saved) notice("Joined, but could not save Wi-Fi profile.",toolHomeIndex==PingHome ? Screen::Ping : Screen::Diagnostics);
+        } else if (connection.phase==NetworkPhase::Failed || connection.phase==NetworkPhase::Idle) clearPendingProfile();
+    }
+    if (screen==Screen::NetworkStopping && !networkTools.busy()) openHome(toolHomeIndex);
     const auto& scan = scanner.snapshot();
     const uint64_t selectedId = selected >= 0 && selected < static_cast<int>(scan.count) ? scan.points[selected].id : 0;
     const uint32_t generation = scan.generation;
     scanner.poll();
-    if ((screen == Screen::Radar || screen == Screen::ScanList) && scanner.snapshot().generation != generation)
+    if ((screen == Screen::Radar || screen == Screen::ScanList || screen == Screen::ToolNetworks) && scanner.snapshot().generation != generation)
         selected = radarSelection(scanner.snapshot(), selectedId);
+    if (screen==Screen::Signal) signalHistory.update(scanner.snapshot());
+    if (screen==Screen::Changes) networkChanges.update(scanner.snapshot());
     if (screen == Screen::Splash && static_cast<uint32_t>(millis() - screenSince) >= kSplashDuration) openHome();
     static uint32_t lastFrame = 0;
     if (millis() - lastFrame >= 50) { lastFrame = millis(); render(); }

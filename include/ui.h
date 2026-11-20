@@ -2,6 +2,7 @@
 #include "model.h"
 #include "effects.h"
 #include "radar.h"
+#include "wifi_tools_model.h"
 #include "probe_model.h"
 #include "carousel.h"
 #include "settings.h"
@@ -9,7 +10,7 @@
 #include <M5GFX.h>
 
 namespace portalis {
-enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Error };
+enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, Error };
 struct ViewModel {
     UiSettings settings;
     float carouselPosition = 0;
@@ -22,6 +23,14 @@ struct ViewModel {
     const ProbeStatus* probeStatus = nullptr;
     bool probeRunning = false;
     const RadarSnapshot* radar = nullptr;
+    const SignalHistory* signal = nullptr;
+    const NetworkChanges* changes = nullptr;
+    const NetworkStatus* network = nullptr;
+    const char* networkName = "";
+    size_t passwordLength = 0;
+    bool networkPickerCanJoin = true;
+    bool channelOverlapView = false;
+    std::array<bool,32> rememberedNetworks{};
     const PortalConfig* config = nullptr;
     const BrowserPage* browser = nullptr;
     const History* history = nullptr;

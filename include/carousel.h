@@ -3,11 +3,13 @@
 #include <cstdint>
 
 namespace portalis {
+enum HomeItem { PortalHome, RadarHome, KarmaHome, ChannelsHome, SignalHome,
+                DiagnosticsHome, PingHome, ChangesHome, SettingsHome };
 class CarouselMotion {
     float from_ = 0, target_ = 0;
     uint32_t started_ = 0;
 public:
-    static constexpr int count = 4;
+    static constexpr int count = SettingsHome + 1;
     void reset(int index, uint32_t now) { from_ = target_ = index; started_ = now; }
     float position(uint32_t now) const {
         const float t = std::min(1.0f, static_cast<uint32_t>(now - started_) / 240.0f);

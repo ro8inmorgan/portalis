@@ -73,6 +73,20 @@ void counter(M5Canvas& c, int x, int width, const char* label, const std::string
     text(c, value, x + 6, 66 - static_cast<int>(pulse * 2),
          blendColor(numberColor, FG, pulse), 3 + pulse * (strong ? 0.25f : 0.15f));
 }
+template<size_t N> void graph(M5Canvas& c, const SampleHistory<N>& data, int low, int high, int y, int height) {
+    c.fillRoundRect(6,y,228,height,3,PANEL);
+    if (data.count<1 || high<=low) return;
+    auto px=[](size_t i) { return 8+static_cast<int>(i*223/(N-1)); };
+    auto py=[&](int value) { return y+height-3-(std::max(low,std::min(high,value))-low)*(height-6)/(high-low); };
+    for (size_t i=0;i<data.count;++i) {
+        if (data.values[i]==kMissingSample) { c.fillRect(px(i),y+height-3,2,2,GOLD); continue; }
+        if (i && data.values[i-1]!=kMissingSample) c.drawLine(px(i-1),py(data.values[i-1]),px(i),py(data.values[i]),ACCENT);
+        else c.fillCircle(px(i),py(data.values[i]),1,ACCENT);
+    }
+}
+const char* checkName(CheckState state) {
+    switch (state) { case CheckState::Pass:return "OK"; case CheckState::NoReply:return "No reply"; case CheckState::Error:return "Error"; default:return "Checking"; }
+}
 void battery(M5Canvas& c, int percent) {
     const bool known = percent >= 0;
     percent = std::max(0, std::min(100, percent));
@@ -121,12 +135,13 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::Home: {
             title(c, "PORTALIS");
-            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Settings"};
+            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "Settings"};
             c.setClipRect(0, 26, 240, 66);
             for (int icon = 0; icon < CarouselMotion::count; ++icon) {
                 float delta = icon - v.carouselPosition;
-                while (delta > 2.0f) delta -= 4;
-                while (delta < -2.0f) delta += 4;
+                while (delta > CarouselMotion::count / 2.0f) delta -= CarouselMotion::count;
+                while (delta < -CarouselMotion::count / 2.0f) delta += CarouselMotion::count;
+                if (std::abs(delta)>2.0f) continue;
                 const float focus = std::max(0.0f, 1.0f - std::abs(delta));
                 const int cx = 120 + static_cast<int>(delta * 91);
                 const int cy = 58 + static_cast<int>((1.0f - focus) * 4);
@@ -180,7 +195,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                     c.drawLine(cx, cy + 1, cx, cy + 20, ink);
                     c.drawLine(cx - 12, cy + 20, cx + 12, cy + 20, ink);
                     c.fillCircle(cx, cy - 3, 3, blendColor(ink, FG, breathe));
-                } else {
+                } else if (icon == SettingsHome) {
                     const float rotation = (v.now % 10000) * (6.28318530718f / 10000.0f);
                     c.drawCircle(cx, cy, 14, ink); c.drawCircle(cx, cy, 7, ink);
                     for (int tooth = 0; tooth < 8; ++tooth) {
@@ -193,15 +208,133 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                         c.drawLine(cx + static_cast<int>(8 * std::cos(angle)), cy + static_cast<int>(8 * std::sin(angle)),
                                    cx + static_cast<int>(12 * std::cos(angle)), cy + static_cast<int>(12 * std::sin(angle)), ink);
                     }
+                } else if (icon == ChannelsHome) {
+                    for (int bar=0;bar<5;++bar) {
+                        const int h=8+static_cast<int>(24*(0.5f+0.5f*std::sin(v.now%4000*0.00157f+bar)));
+                        c.fillRoundRect(cx-21+bar*9,cy+18-h,6,h,2,ink);
+                    }
+                    c.drawLine(cx-23,cy+20,cx+23,cy+20,ink);
+                } else if (icon == SignalHome || icon == PingHome) {
+                    c.drawLine(cx-22,cy+19,cx+22,cy+19,ink);
+                    int oldY=cy;
+                    for (int x=-21;x<=21;++x) {
+                        const float phase=x*0.22f+(v.now%4000)*0.00157f;
+                        const int y=cy-static_cast<int>((icon==SignalHome ? std::sin(phase) : std::pow(std::max(0.0f,std::cos(phase)),8))*14);
+                        if (x>-21) c.drawLine(cx+x-1,oldY,cx+x,y,ink);
+                        oldY=y;
+                    }
+                    if (icon==PingHome) c.fillCircle(cx+18,cy-17,2,FG);
+                } else if (icon == DiagnosticsHome) {
+                    c.drawCircle(cx-12,cy,7,ink); c.drawCircle(cx+12,cy,7,ink);
+                    c.drawLine(cx-5,cy,cx+5,cy,ink);
+                    c.fillCircle(cx-12+static_cast<int>((v.now%2000)*24/2000),cy,2,FG);
+                    c.drawLine(cx-5,cy+14,cx,cy+19,ink); c.drawLine(cx,cy+19,cx+12,cy+8,ink);
+                } else {
+                    for (int row=0;row<3;++row) {
+                        const int y=cy-14+row*14;
+                        c.fillCircle(cx-17,y,2,blendColor(fill,ink,(v.now/500)%3==static_cast<unsigned>(row)?1.0f:0.4f));
+                        c.drawLine(cx-9,y,cx+18,y,ink);
+                    }
                 }
             }
             c.clearClipRect();
-            const int selected = std::max(0, std::min(3, v.selected));
+            const int selected = std::max(0, std::min(CarouselMotion::count-1, v.selected));
             const std::string label = labels[selected];
             text(c, label, (240 - label.size() * 12) / 2, 95);
-            for (int dot = 0; dot < 4; ++dot) c.fillCircle(106 + dot * 9, 113, 1, dot == selected ? ACCENT : MUTED);
+            for (int dot = 0; dot < CarouselMotion::count; ++dot) c.fillCircle(120 - (CarouselMotion::count-1)*9/2 + dot * 9, 113, 1, dot == selected ? ACCENT : MUTED);
             footer(c, ",/ Move  Enter Open");
             break;
+        }
+        case Screen::Channels: {
+            title(c,"CHANNELS");
+            const RadarSnapshot empty; const auto& scan=v.radar ? *v.radar : empty;
+            const int chosen=std::max(1,std::min(14,v.selected+1));
+            text(c,scan.failed ? "Scan failed - R retry" : scan.scanning ? "Scanning..." : v.channelOverlapView ? "Overlap estimate" : "AP counts / 2.4 GHz",6,28,MUTED,1.5f);
+            uint32_t peak=1;
+            for (int ch=1;ch<=14;++ch) peak=std::max(peak,v.channelOverlapView ? scan.channelOverlap[ch] : scan.channelCounts[ch]);
+            for (int ch=1;ch<=14;++ch) {
+                const int x=10+(ch-1)*16;
+                const int h=(v.channelOverlapView ? scan.channelOverlap[ch] : scan.channelCounts[ch])*40/peak;
+                c.fillRect(x,84-h,12,std::max(1,h),ch==chosen ? ACCENT : MUTED);
+                text(c,std::to_string(ch),x,88,ch==chosen ? ACCENT : MUTED,1);
+            }
+            text(c,"CH"+std::to_string(chosen)+" "+std::to_string(scan.channelCounts[chosen])+" APs",6,100,FG,1.5f);
+            text(c,scan.channelCounts[chosen] ? std::to_string(scan.channelStrongest[chosen])+"dBm" : "--dBm",162,100,ACCENT,1.5f);
+            footer(c,"ENT Mode ;/. CH R Scan"); break;
+        }
+        case Screen::ToolNetworks: {
+            title(c,"WI-FI PICKER");
+            const RadarSnapshot empty; const auto& scan=v.radar ? *v.radar : empty;
+            const int first=std::max(0,v.selected/4)*4;
+            for (int row=0;row<4 && first+row<static_cast<int>(scan.count);++row) {
+                const int index=first+row;
+                selectedRow(c,std::string(scan.points[index].ssid)+(v.rememberedNetworks[index] ? " *" : ""),row,index==v.selected,elapsed);
+            }
+            if (!scan.count) text(c,scan.failed ? "Scan failed" : scan.scanning ? "Scanning..." : "No networks found",6,45,MUTED,1.5f);
+            footer(c,v.networkPickerCanJoin ? "ENT Join F Forget R Scan" : "ENT Track R Scan Esc"); break;
+        }
+        case Screen::Signal: {
+            title(c,"SIGNAL");
+            if (v.signal) {
+                const auto& signal=*v.signal;
+                ticker(c,signal.target.ssid,6,28,228,elapsed,MUTED,1.5f);
+                const int current=signal.samples.latest(), average=signal.average();
+                text(c,current==kMissingSample ? "Not seen" : std::to_string(current)+"dBm",6,46,ACCENT,2);
+                text(c,average==kMissingSample ? "Avg --" : "Avg "+std::to_string(average),145,49,MUTED,1.5f);
+                graph(c,signal.samples,-100,-20,68,39);
+            }
+            footer(c,"ENT Choose AP R Scan Esc"); break;
+        }
+        case Screen::Changes: {
+            title(c,"CHANGES");
+            if (v.changes && v.changes->count) {
+                const int index=std::max(0,std::min(v.selected,static_cast<int>(v.changes->count)-1));
+                const auto& event=v.changes->events[index];
+                text(c,std::to_string(index+1)+"/"+std::to_string(v.changes->count)+" at "+elapsedLabel(event.at/1000),6,29,MUTED,1.5f);
+                wrapped(c,event.text,49,3);
+            } else text(c,v.changes && v.changes->hasBaseline() ? "No changes yet" : "Taking baseline...",6,48,FG,1.5f);
+            footer(c,v.radar && v.radar->failed ? "Scan failed R Retry Esc" : v.changes && v.changes->limited ? ";/. Log Top32 C Clear" : ";/. Log C Clear R Scan"); break;
+        }
+        case Screen::NetworkPassword:
+            title(c,"JOIN WI-FI"); ticker(c,v.networkName,6,29,228,elapsed,MUTED,1.5f);
+            text(c,"Password:",6,49,FG,1.5f);
+            text(c,std::string(std::min(size_t(18),v.passwordLength),'*'),6,68,ACCENT,2);
+            text(c,std::to_string(v.passwordLength)+" chars | saved on join",6,96,MUTED,1);
+            footer(c,"Enter Join Esc Cancel"); break;
+        case Screen::PingTarget:
+            title(c,"PING TARGET"); text(c,"IPv4 address:",6,33,MUTED,1.5f);
+            text(c,v.draft,6,56,ACCENT,2);
+            footer(c,"Enter Apply Esc Cancel"); break;
+        case Screen::NetworkStopping:
+            title(c,"DISCONNECT"); text(c,"Finishing checks...",6,43,FG,1.5f);
+            text(c,"DNS may take 15 sec",6,66,MUTED,1.5f);
+            footer(c,"Returning to main menu"); break;
+        case Screen::Diagnostics:
+        case Screen::Ping: {
+            title(c,v.screen==Screen::Ping ? "PING MONITOR" : "DIAGNOSTICS");
+            const NetworkStatus empty; const auto& net=v.network ? *v.network : empty;
+            if (net.phase==NetworkPhase::Connecting) {
+                ticker(c,net.ssid,6,32,228,elapsed,FG,1.5f);
+                text(c,"Joining / waiting DHCP",6,57,MUTED,1.5f);
+                text(c,"30 second timeout",6,80,MUTED,1.5f);
+            } else if (net.phase==NetworkPhase::Failed) {
+                wrapped(c,net.message,32,3);
+                text(c,"Esc: choose Wi-Fi again",6,96,MUTED,1.5f);
+            } else if (v.screen==Screen::Diagnostics) {
+                text(c,std::string("IP ")+net.address,6,29,ACCENT,1.5f);
+                text(c,"Gateway: "+std::string(checkName(net.gatewayCheck)),6,48,FG,1.5f);
+                text(c,"DNS: "+std::string(checkName(net.dns)),6,67,FG,1.5f);
+                text(c,"TCP 443: "+std::string(checkName(net.internet)),6,86,FG,1.5f);
+                text(c,"No reply may mean filtered",6,105,MUTED,1);
+            } else {
+                text(c,std::string(net.target)+(net.paused ? " paused" : ""),6,28,MUTED,1.5f);
+                text(c,"Avg "+std::to_string(net.ping.average())+"ms",6,45,ACCENT,1.5f);
+                text(c,"Loss "+std::to_string(net.ping.lossPercent())+"%",141,45,GOLD,1.5f);
+                graph(c,net.ping.samples,0,std::max(50,static_cast<int>(net.ping.maximum)),63,32);
+                text(c,"Min "+std::to_string(net.ping.minimum)+" Max "+std::to_string(net.ping.maximum)+"ms",6,100,MUTED,1.5f);
+                if (*net.message) ticker(c,net.message,6,28,228,elapsed,GOLD,1.5f);
+            }
+            footer(c,v.screen==Screen::Ping ? "T Target P Pause R Reset" : "R Recheck Esc Disconnect"); break;
         }
         case Screen::Setup: {
             title(c, "PORTALIS"); text(c, v.sdReady ? "SD" : "NO SD", 115, 7, MUTED, 1.5f);

@@ -23,7 +23,7 @@ bool WifiScanner::start() {
     if (active_) return true;
     // A separate mode: never change channels underneath the running portal.
     if (WiFi.getMode() & WIFI_MODE_AP) return false;
-    snapshot_ = {};
+    snapshot_ = {}; trackedId_ = 0;
     WiFi.setAutoReconnect(false);
     if (!WiFi.mode(WIFI_STA)) return false;
     WiFi.disconnect(false, false);
@@ -57,11 +57,13 @@ void WifiScanner::poll() {
         WiFi.scanDelete();
         // Discard stale dots on failure rather than showing old proximity as live.
         snapshot_.count = 0; snapshot_.total = 0;
+        snapshot_.channelCounts={}; snapshot_.channelStrongest={}; snapshot_.channelOverlap={}; snapshot_.trackedFound=false;
         snapshot_.scanning = false; snapshot_.failed = true; ++snapshot_.generation;
         nextAt_ = now + 5000;
         return;
     }
     RadarSnapshot next;
+    next.trackedId = trackedId_;
     next.total = static_cast<uint16_t>(result);
     next.updatedAt = now;
     next.generation = snapshot_.generation + 1;
@@ -81,6 +83,12 @@ void WifiScanner::poll() {
             ap.ssid[n] = c >= 32 && c <= 126 ? static_cast<char>(c) : '?';
         }
         ap.ssid[n] = '\0';
+        std::memcpy(ap.rawSsid, info->ssid, 32); ap.rawSsid[32]='\0';
+        ap.connectable = n && (info->authmode==WIFI_AUTH_OPEN || info->authmode==WIFI_AUTH_WPA_PSK ||
+            info->authmode==WIFI_AUTH_WPA2_PSK || info->authmode==WIFI_AUTH_WPA_WPA2_PSK ||
+            info->authmode==WIFI_AUTH_WPA3_PSK || info->authmode==WIFI_AUTH_WPA2_WPA3_PSK);
+        next.tally(ap);
+        if (ap.id==trackedId_) { next.trackedFound=true; next.trackedPoint=ap; }
         if (!n) std::snprintf(ap.ssid, sizeof(ap.ssid), "Hidden %04X", static_cast<unsigned>(ap.id & 0xffff));
         next.add(ap);
     }
