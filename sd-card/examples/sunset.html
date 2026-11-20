@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sunset — Portalis</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #29182D; color: white; font: 18px/1.5 system-ui; }
+    main { max-width: 480px; margin: 40px auto; }
+    label { display: block; margin: 16px 0; }
+    input, textarea, select, button { font: inherit; }
+    input:not([type=checkbox]), textarea, select { display: block; width: 100%; padding: 10px; }
+    button { padding: 14px 24px; background: #FFB58C; border: 0; border-radius: 12px; }
+    small { display: block; margin-top: 24px; }
+  </style>
+</head>
+<body><main>
+  <h1>A little connection.</h1>
+  <p>This form is served by the nearby Portalis device.</p>
+  <form>
+    <label>How was the connection?
+      <select name="connection"><option value="good">Good</option><option value="slow">Slow</option></select>
+    </label>
+    <label>Comments <textarea name="comments" rows="3"></textarea></label>
+    <label><input type="checkbox" name="features" value="page"> Page opened</label>
+    <label><input type="checkbox" name="features" value="form"> Form worked</label>
+    <button type="submit" name="action" value="feedback">Send feedback</button>
+  </form>
+  <small>Submitted fields are saved on this device's SD card.</small>
+</main></body>
+</html>
