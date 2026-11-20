@@ -121,7 +121,7 @@ void test_settings_controls_bounds_and_color_preview() {
                 drawUi(canvas, view);
                 TEST_ASSERT_EQUAL(kAccents[accent].color, canvas.texts[0].color);
             }
-    view.screen = Screen::Setup; view.selected = 4; drawUi(canvas, view);
+    view.screen = Screen::Home; view.selected = 3; view.carouselPosition = 3; drawUi(canvas, view);
     bool found = false;
     for (const auto& text : canvas.texts) if (text.value == "Settings") found = true;
     TEST_ASSERT_TRUE(found); TEST_ASSERT_EQUAL(0, canvas.violations);
@@ -199,4 +199,67 @@ void test_battery_indicator_fits_all_headers() {
     }
     TEST_ASSERT_EQUAL(0, canvas.violations);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }
+void test_radar_and_list_fit_dense_and_empty_scans() {
+    M5Canvas canvas; ViewModel view; RadarSnapshot snapshot;
+    view.radar = &snapshot;
+    for (int i = 0; i < 32; ++i) {
+        RadarAccessPoint ap; ap.id = i + 1; ap.rssi = -30 - i * 3; ap.channel = 13;
+        std::strcpy(ap.ssid, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"); std::strcpy(ap.security, "WPA2/3");
+        snapshot.add(ap);
+    }
+    snapshot.total = 300;
+    for (auto screen : {Screen::Radar, Screen::ScanList}) {
+        view.screen = screen;
+        for (size_t selected = 0; selected < snapshot.count; ++selected) {
+            view.selected = selected;
+            for (uint32_t time = 0; time < 4000; time += 100) { view.now = time; drawUi(canvas, view); }
+        }
+        snapshot.scanning = true; drawUi(canvas, view);
+    }
+    snapshot = {};
+    for (auto screen : {Screen::Radar, Screen::ScanList}) {
+        view.screen = screen; drawUi(canvas, view);
+        snapshot.scanning = true; drawUi(canvas, view);
+        snapshot.scanning = false; snapshot.failed = true; drawUi(canvas, view);
+    }
+    TEST_ASSERT_EQUAL(0, canvas.violations);
+}
+void test_carousel_animation_wrap_and_layout() {
+    CarouselMotion motion; M5Canvas canvas; ViewModel view; view.screen = Screen::Home;
+    motion.reset(0, 100); motion.move(-1, 100);
+    TEST_ASSERT_EQUAL_FLOAT(0, motion.position(100));
+    TEST_ASSERT_EQUAL_FLOAT(-1, motion.position(340));
+    motion.move(1, 340); TEST_ASSERT_EQUAL_FLOAT(0, motion.position(580));
+    motion.reset(2, UINT32_MAX - 100); motion.move(1, UINT32_MAX - 100);
+    TEST_ASSERT_EQUAL_FLOAT(3, motion.position(139));
+    for (int selected = 0; selected < 4; ++selected) {
+        view.selected = selected;
+        for (int frame = -50; frame < 150; ++frame) {
+            view.carouselPosition = frame / 50.0f; view.now = frame * 50;
+            drawUi(canvas, view);
+        }
+    }
+    TEST_ASSERT_EQUAL(0, canvas.violations);
+}
+void test_probe_screens_fit() {
+    M5Canvas canvas; ViewModel view; ProbeConfig config; ProbeStatus status;
+    view.probeConfig = &config; view.probeStatus = &status;
+    config.count = 16;
+    for (auto& name : config.ssids) name = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456";
+    strcpy(status.ssid, config.ssids[0].c_str());
+    for (int i = 0; i < 32; ++i) status.record(status.ssid, UINT32_MAX, i % 2);
+    status.attempts = status.joins = UINT32_MAX; status.channel = 14; status.remaining = 120;
+    for (auto screen : {Screen::Probe, Screen::ProbeScope, Screen::ProbeHistory}) {
+        view.screen = screen; config.count = 16; status.eventCount = 32;
+        for (int selected = 0; selected < 32; ++selected) {
+            view.selected = selected;
+            for (auto phase : {ProbePhase::Idle, ProbePhase::Listening, ProbePhase::Waiting, ProbePhase::Notice, ProbePhase::Failed}) {
+                status.phase = phase; view.probeRunning = phase != ProbePhase::Idle && phase != ProbePhase::Failed;
+                for (uint32_t now : {0U, 5000U}) { view.now = now; drawUi(canvas, view); }
+            }
+        }
+        config.count = 0; status.eventCount = 0; drawUi(canvas, view);
+    }
+    TEST_ASSERT_EQUAL(0, canvas.violations);
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }

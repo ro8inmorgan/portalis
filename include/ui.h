@@ -1,19 +1,27 @@
 #pragma once
 #include "model.h"
 #include "effects.h"
+#include "radar.h"
+#include "probe_model.h"
+#include "carousel.h"
 #include "settings.h"
 #include "storage.h"
 #include <M5GFX.h>
 
 namespace portalis {
-enum class Screen { Splash, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Error };
+enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Error };
 struct ViewModel {
     UiSettings settings;
+    float carouselPosition = 0;
     Screen screen = Screen::Setup;
     const char* ssid = "Portalis Demo";
     const char* draft = "";
     const char* pageName = "Aurora";
     const char* error = "";
+    const ProbeConfig* probeConfig = nullptr;
+    const ProbeStatus* probeStatus = nullptr;
+    bool probeRunning = false;
+    const RadarSnapshot* radar = nullptr;
     const PortalConfig* config = nullptr;
     const BrowserPage* browser = nullptr;
     const History* history = nullptr;

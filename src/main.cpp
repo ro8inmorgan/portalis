@@ -5,10 +5,17 @@
 #include "portal.h"
 #include "storage.h"
 #include "ui.h"
+#include "wifi_scanner.h"
+#include "probe_test.h"
 
 using namespace portalis;
 namespace {
 Portal portal;
+WifiScanner scanner;
+ProbeTest probe;
+ProbeConfig probeConfig;
+CarouselMotion carousel;
+int homeReturnIndex = 0;
 Storage storage;
 History history;
 Preferences preferences;
@@ -32,6 +39,7 @@ M5Canvas canvas(&M5.Display);
 alignas(16) uint8_t frameBuffer[240 * 135];
 
 void show(Screen next) { screen = next; selected = 0; screenSince = millis(); }
+void openHome(int index = 0) { homeReturnIndex = index; show(Screen::Home); selected = index; carousel.reset(index, millis()); }
 void notice(const std::string& message, Screen back) { error = message; returnScreen = back; show(Screen::Error); }
 void saveConfig() {
     if (!preferencesReady) return;
@@ -99,6 +107,10 @@ void openSubmissions(Screen back) {
     std::string message;
     if (!storage.listSubmissions(submissions, message)) notice(message, back);
 }
+void reloadProbeConfig() {
+    std::string message;
+    if (!loadProbeConfig(probeConfig, message)) notice(message, Screen::Probe);
+}
 void handleKey(char key) {
     const bool enter = key == '\n', back = key == '\b', escape = key == '`';
     const bool up = key == ';', down = key == '.';
@@ -106,23 +118,74 @@ void handleKey(char key) {
     bool settingChanged = false;
     switch (screen) {
         case Screen::Splash:
-            show(Screen::Setup);
+            openHome();
+            break;
+        case Screen::Home:
+            if (key == ',' || key == '/') {
+                const int direction = key == ',' ? -1 : 1;
+                selected = (selected + CarouselMotion::count + direction) % CarouselMotion::count;
+                carousel.move(direction, millis());
+                menuSound();
+            } else if (enter) {
+                homeReturnIndex = selected;
+                if (selected == 0) show(Screen::Setup);
+                else if (selected == 1) {
+                    if (scanner.start()) show(Screen::Radar);
+                    else notice("Stop the portal before scanning Wi-Fi.", Screen::Home);
+                } else if (selected == 2) { show(Screen::Probe); reloadProbeConfig(); }
+                else openSettings(Screen::Home);
+            }
             break;
         case Screen::Setup:
+            if (escape || back) { openHome(); break; }
             if (key == 'h' || key == 'H') { openHistory(Screen::Setup); break; }
-            if (up) selected = (selected + 4) % 5;
-            if (down) selected = (selected + 1) % 5;
+            if (up) selected = (selected + 3) % 4;
+            if (down) selected = (selected + 1) % 4;
             if (enter) {
                 if (selected == 0) openNames();
                 else if (selected == 1) browse("/");
                 else if (selected == 2) startPortal();
                 else if (selected == 3) openSubmissions(Screen::Setup);
-                else openSettings(Screen::Setup);
             }
             break;
+        case Screen::Radar:
+        case Screen::ScanList:
+            if (escape || back) { scanner.stop(); openHome(1); }
+            else if (key == 'r' || key == 'R') scanner.refresh();
+            else if (enter) {
+                screen = screen == Screen::Radar ? Screen::ScanList : Screen::Radar;
+                screenSince = millis();
+            } else if (scanner.snapshot().count) {
+                const int count = static_cast<int>(scanner.snapshot().count);
+                if (up) selected = (selected + count - 1) % count;
+                if (down) selected = (selected + 1) % count;
+            }
+            break;
+        case Screen::Probe:
+            if (escape || back) { probe.stop(); openHome(2); }
+            else if (enter) show(Screen::ProbeScope);
+            else if (key == 'h' || key == 'H') show(Screen::ProbeHistory);
+            else if ((key == 'r' || key == 'R') && !probe.running()) { storage.begin(); reloadProbeConfig(); }
+            else if (key == 's' || key == 'S') {
+                if (probe.running()) probe.stop();
+                else {
+                    reloadProbeConfig();
+                    if (screen != Screen::Probe) break;
+                    else if (!probe.start(probeConfig)) notice("Probe test could not start. Try again.", Screen::Probe);
+                }
+            }
+            break;
+        case Screen::ProbeScope:
+        case Screen::ProbeHistory: {
+            const int count = screen == Screen::ProbeScope ? probeConfig.count : probe.status().eventCount;
+            if (escape || back || enter) show(Screen::Probe);
+            else if (up && selected > 0) --selected;
+            else if (down && selected + 1 < count) ++selected;
+            break;
+        }
         case Screen::Settings:
             if (escape || back) {
-                if (saveSettings()) show(settingsReturn);
+                if (saveSettings()) { if (settingsReturn == Screen::Home) openHome(3); else show(settingsReturn); }
                 else notice("Settings active, but could not save to device.", settingsReturn);
                 break;
             }
@@ -215,7 +278,10 @@ void handleKey(char key) {
             else if (down && submissionOffset + 4 < submission.lines.size()) ++submissionOffset;
             break;
         case Screen::Error:
-            if (enter || escape || back) show(returnScreen);
+            if (enter || escape || back) {
+                if (returnScreen == Screen::Home) openHome(homeReturnIndex);
+                else show(returnScreen);
+            }
             break;
     }
     if (up || down || settingChanged) screenSince = millis();
@@ -242,6 +308,9 @@ void pollKeyboard() {
 }
 void render() {
     ViewModel view;
+    view.carouselPosition = carousel.position(millis());
+    view.radar = &scanner.snapshot();
+    view.probeConfig = &probeConfig; view.probeStatus = &probe.status(); view.probeRunning = probe.running();
     view.settings = uiSettings;
     view.screen = screen; view.ssid = ssid.c_str(); view.draft = draft.c_str();
     view.pageName = page.name.c_str(); view.error = error.c_str();
@@ -344,6 +413,9 @@ void setup() {
     if (!storage.loadTemplate(templatePath, page, message)) {
         templatePath.clear(); page = PageTemplate{};
     }
+    probe.init([](Event event, const std::string& fields) {
+        return storage.appendSubmission(event, fields);
+    });
     portal.init([](Event event, const std::string& fields) {
         // Never acknowledge entered data unless it was persisted successfully.
         if ((storage.ready() || fields != "[]") && !storage.appendSubmission(event, fields)) return false;
@@ -359,7 +431,14 @@ void loop() {
     M5Cardputer.update();
     pollKeyboard();
     portal.poll();
-    if (screen == Screen::Splash && static_cast<uint32_t>(millis() - screenSince) >= kSplashDuration) show(Screen::Setup);
+    probe.poll();
+    const auto& scan = scanner.snapshot();
+    const uint64_t selectedId = selected >= 0 && selected < static_cast<int>(scan.count) ? scan.points[selected].id : 0;
+    const uint32_t generation = scan.generation;
+    scanner.poll();
+    if ((screen == Screen::Radar || screen == Screen::ScanList) && scanner.snapshot().generation != generation)
+        selected = radarSelection(scanner.snapshot(), selectedId);
+    if (screen == Screen::Splash && static_cast<uint32_t>(millis() - screenSince) >= kSplashDuration) openHome();
     static uint32_t lastFrame = 0;
     if (millis() - lastFrame >= 50) { lastFrame = millis(); render(); }
     delay(2);

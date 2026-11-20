@@ -119,14 +119,168 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             c.fillRect(24, 120, std::min(elapsed, kSplashDuration) * 192 / kSplashDuration, 2, ACCENT);
             break;
         }
+        case Screen::Home: {
+            title(c, "PORTALIS");
+            const char* labels[] = {"Portal", "Wi-Fi radar", "Probe test", "Settings"};
+            c.setClipRect(0, 26, 240, 66);
+            for (int icon = 0; icon < CarouselMotion::count; ++icon) {
+                float delta = icon - v.carouselPosition;
+                while (delta > 2.0f) delta -= 4;
+                while (delta < -2.0f) delta += 4;
+                const float focus = std::max(0.0f, 1.0f - std::abs(delta));
+                const int cx = 120 + static_cast<int>(delta * 91);
+                const int cy = 58 + static_cast<int>((1.0f - focus) * 4);
+                const int width = 54 + static_cast<int>(focus * 14);
+                const uint16_t fill = blendColor(PANEL, ACCENT, focus * 0.18f);
+                const uint16_t ink = blendColor(MUTED, ACCENT, focus);
+                c.fillRoundRect(cx - width / 2, cy - 28, width, 56, 9, fill);
+                if (icon == 0) {
+                    c.fillRoundRect(cx - 15, cy - 20, 30, 40, 8, ink);
+                    c.fillRoundRect(cx - 11, cy - 16, 22, 36, 5, fill);
+                    c.fillCircle(cx + 6, cy + 2, 2, FG);
+                    c.drawLine(cx - 20, cy + 20, cx + 20, cy + 20, ink);
+                } else if (icon == 1) {
+                    c.drawCircle(cx, cy, 19, ink); c.drawCircle(cx, cy, 11, ink);
+                    const float angle = (v.now % 4000) * (6.28318530718f / 4000.0f);
+                    c.drawLine(cx, cy, cx + static_cast<int>(19 * std::cos(angle)), cy + static_cast<int>(19 * std::sin(angle)), ink);
+                    c.fillCircle(cx - 9, cy - 6, 2, FG); c.fillCircle(cx + 8, cy + 10, 2, ink);
+                } else if (icon == 2) {
+                    c.drawCircle(cx, cy - 6, 16, ink);
+                    c.drawCircle(cx, cy - 6, 9, ink);
+                    c.fillCircle(cx, cy - 6, 3, FG);
+                    c.drawLine(cx, cy - 2, cx, cy + 20, ink);
+                    c.drawLine(cx - 12, cy + 20, cx + 12, cy + 20, ink);
+                } else {
+                    c.drawCircle(cx, cy, 14, ink); c.drawCircle(cx, cy, 7, ink);
+                    for (int tooth = 0; tooth < 8; ++tooth) {
+                        const float angle = tooth * 0.785398163f;
+                        c.drawLine(cx + static_cast<int>(14 * std::cos(angle)), cy + static_cast<int>(14 * std::sin(angle)),
+                                   cx + static_cast<int>(21 * std::cos(angle)), cy + static_cast<int>(21 * std::sin(angle)), ink);
+                    }
+                }
+            }
+            c.clearClipRect();
+            const int selected = std::max(0, std::min(3, v.selected));
+            const std::string label = labels[selected];
+            text(c, label, (240 - label.size() * 12) / 2, 95);
+            for (int dot = 0; dot < 4; ++dot) c.fillCircle(106 + dot * 9, 113, 1, dot == selected ? ACCENT : MUTED);
+            footer(c, ",/ Move  Enter Open");
+            break;
+        }
         case Screen::Setup: {
             title(c, "PORTALIS"); text(c, v.sdReady ? "SD" : "NO SD", 115, 7, MUTED, 1.5f);
-            const std::array<std::string, 5> labels{{"AP: " + std::string(v.ssid), "Page: " + std::string(v.pageName),
-                "Start portal", "Submissions", "Settings"}};
+            const std::array<std::string, 4> labels{{"AP: " + std::string(v.ssid), "Page: " + std::string(v.pageName),
+                "Start portal", "Submissions"}};
             const int first = std::max(0, v.selected - 3);
-            for (int row = 0; row < 4 && first + row < 5; ++row)
+            for (int row = 0; row < 4 && first + row < 4; ++row)
                 selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed);
             footer(c, ";/. Move ENT Select H Log"); break;
+        }
+        case Screen::Radar:
+        case Screen::ScanList: {
+            title(c, v.screen == Screen::Radar ? "WI-FI RADAR" : "WI-FI LIST");
+            const RadarSnapshot empty;
+            const auto& scan = v.radar ? *v.radar : empty;
+            const size_t chosen = scan.count ? std::min(static_cast<size_t>(std::max(0, v.selected)), scan.count - 1) : 0;
+            if (v.screen == Screen::Radar) {
+                constexpr int cx = 53, cy = 69, radius = 39;
+                for (int r : {13, 26, radius}) c.drawCircle(cx, cy, r, blendColor(BG, ACCENT, 0.45f));
+                c.drawLine(cx - radius, cy, cx + radius, cy, PANEL);
+                c.drawLine(cx, cy - radius, cx, cy + radius, PANEL);
+                const float sweep = (v.now % 4000) * (6.28318530718f / 4000.0f);
+                for (int trail = 4; trail >= 0; --trail) {
+                    const float angle = sweep - trail * 0.12f;
+                    c.drawLine(cx, cy, cx + static_cast<int>(radius * std::cos(angle)),
+                               cy + static_cast<int>(radius * std::sin(angle)), blendColor(BG, ACCENT, 0.9f - trail * 0.16f));
+                }
+                for (size_t i = 0; i < scan.count; ++i) {
+                    const auto& ap = scan.points[i];
+                    const float angle = radarAngle(ap.id);
+                    const int r = radarRadius(ap.rssi);
+                    const int x = cx + static_cast<int>(r * std::cos(angle));
+                    const int y = cy + static_cast<int>(r * std::sin(angle));
+                    const float age = std::fmod(sweep - angle + 6.28318530718f, 6.28318530718f);
+                    const uint16_t color = i == chosen ? FG : blendColor(MUTED, ACCENT, 1.0f - age / 6.28318530718f);
+                    c.fillCircle(x, y, i == chosen ? 3 : 2, color);
+                    if (i == chosen) c.drawCircle(x, y, 5, ACCENT);
+                }
+                c.fillCircle(cx, cy, 2, ACCENT);
+                const std::string count = std::to_string(scan.count) + (scan.total > scan.count ? "/" + std::to_string(scan.total) : "") + " APs";
+                text(c, count, 106, 29, ACCENT, 1.5f);
+                if (scan.count) {
+                    const auto& ap = scan.points[chosen];
+                    ticker(c, ap.ssid, 106, 48, 128, elapsed);
+                    text(c, std::to_string(ap.rssi) + " dBm", 106, 68);
+                    text(c, "CH" + std::to_string(ap.channel) + " " + ap.security, 106, 87, MUTED, 1.5f);
+                } else {
+                    text(c, scan.failed ? "Scan failed" : scan.scanning ? "Scanning..." : "No APs yet", 106, 50, MUTED, 1.5f);
+                    text(c, "2.4 GHz", 106, 74, MUTED, 1.5f);
+                }
+                text(c, "Signal only", 106, 102, MUTED, 1.5f);
+            } else {
+                if (!scan.count) {
+                    text(c, scan.failed ? "Scan failed" : scan.scanning ? "Scanning..." : "No access points", 6, 47);
+                    text(c, "R retries; Esc exits", 6, 75, MUTED, 1.5f);
+                }
+                const size_t first = chosen / 3 * 3;
+                for (size_t row = 0; row < 3 && first + row < scan.count; ++row) {
+                    const auto& ap = scan.points[first + row];
+                    const bool active = first + row == chosen;
+                    const int y = 27 + row * 29;
+                    if (active) c.fillRoundRect(3, y - 1, 234, 28, 3, PANEL);
+                    ticker(c, ap.ssid, 6, y, 228, elapsed, active ? ACCENT : FG);
+                    char details[40];
+                    std::snprintf(details, sizeof(details), "%d dBm CH%u %s %04X", ap.rssi, ap.channel, ap.security,
+                                  static_cast<unsigned>(ap.id & 0xffff));
+                    ticker(c, details, 6, y + 16, 228, elapsed, MUTED, 1.5f);
+                }
+            }
+            footer(c, scan.scanning ? ";/. AP ENT View Scanning" : ";/. AP ENT View R Scan");
+            break;
+        }
+        case Screen::Probe: {
+            title(c, "PROBE TEST");
+            const ProbeStatus empty;
+            const auto& state = v.probeStatus ? *v.probeStatus : empty;
+            const size_t approved = v.probeConfig ? v.probeConfig->count : 0;
+            const bool ap = state.phase == ProbePhase::Waiting || state.phase == ProbePhase::Notice;
+            if (ap) {
+                ticker(c, state.ssid, 6, 29, 228, elapsed);
+                text(c, std::string(state.phase == ProbePhase::Notice ? "AP joined " : "Waiting ") + std::to_string(state.remaining) + "s", 6, 51, ACCENT);
+            } else {
+                text(c, v.probeRunning ? "Listening CH" + std::to_string(state.channel) : state.phase == ProbePhase::Failed ? "Radio error" : approved ? "Ready to test" : "No approved SSIDs", 6, 29, ACCENT);
+                text(c, std::to_string(approved) + " approved SSIDs", 6, 51, MUTED, 1.5f);
+            }
+            ticker(c, "Tests " + std::to_string(state.attempts) + "  Joined " + std::to_string(state.joins), 6, 74, 228, elapsed, FG, 1.5f);
+            text(c, "ENT Scope  H Log", 6, 96, MUTED, 1.5f);
+            footer(c, v.probeRunning ? "S Stop  Esc Exit" : "S Start R Reload Esc Exit");
+            break;
+        }
+        case Screen::ProbeScope: {
+            title(c, "APPROVED SSIDS");
+            const size_t count = v.probeConfig ? v.probeConfig->count : 0;
+            if (!count) {
+                text(c, "List is empty", 6, 34);
+                text(c, "Edit /probe-test.json", 6, 62, MUTED, 1.5f);
+                text(c, "on your SD card.", 6, 82, MUTED, 1.5f);
+            }
+            const int first = std::max(0, v.selected) / 4 * 4;
+            for (int row = 0; row < 4 && first + row < static_cast<int>(count); ++row)
+                selectedRow(c, v.probeConfig->ssids[first + row], row, first + row == v.selected, elapsed);
+            footer(c, ";/. Scroll  Esc Back"); break;
+        }
+        case Screen::ProbeHistory: {
+            title(c, "TEST LOG");
+            const size_t count = v.probeStatus ? v.probeStatus->eventCount : 0;
+            if (!count) text(c, "No tests yet", 6, 42);
+            const int first = std::max(0, v.selected) / 3 * 3;
+            for (int row = 0; row < 3 && first + row < static_cast<int>(count); ++row) {
+                const auto& event = v.probeStatus->events[first + row];
+                const int y = 27 + row * 29;
+                ticker(c, event.ssid, 6, y, 228, elapsed, first + row == v.selected ? ACCENT : FG);
+                ticker(c, "+" + elapsedLabel(event.seconds) + (event.connected ? " AP joined" : " No join seen"), 6, y + 16, 228, elapsed, MUTED, 1.5f);
+            }
+            footer(c, ";/. Scroll  Esc Back"); break;
         }
         case Screen::Settings: {
             title(c, "SETTINGS");

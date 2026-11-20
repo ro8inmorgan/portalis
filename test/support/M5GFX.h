@@ -27,9 +27,10 @@ public:
         if (!clipped_) bounds(x,y,textWidth(s),8*scale_);
         texts.push_back({s,x,y,scale_,color_,clipped_});
     }
-    void fillRect(int x,int y,int w,int h,uint16_t) { bounds(x,y,w,h); }
-    void fillRoundRect(int x,int y,int w,int h,int,uint16_t) { bounds(x,y,w,h); }
+    void fillRect(int x,int y,int w,int h,uint16_t) { if (!clipped_) bounds(x,y,w,h); }
+    void fillRoundRect(int x,int y,int w,int h,int,uint16_t) { if (!clipped_) bounds(x,y,w,h); }
     void drawFastHLine(int x,int y,int w,uint16_t) { bounds(x,y,w,1); }
-    void drawCircle(int x,int y,int r,uint16_t) { bounds(x-r,y-r,r*2+1,r*2+1); }
-    void fillCircle(int x,int y,int r,uint16_t) { bounds(x-r,y-r,r*2+1,r*2+1); }
+    void drawLine(int x0,int y0,int x1,int y1,uint16_t) { if (!clipped_) bounds(std::min(x0,x1),std::min(y0,y1),std::abs(x1-x0)+1,std::abs(y1-y0)+1); }
+    void drawCircle(int x,int y,int r,uint16_t) { if (!clipped_) bounds(x-r,y-r,r*2+1,r*2+1); }
+    void fillCircle(int x,int y,int r,uint16_t) { if (!clipped_) bounds(x-r,y-r,r*2+1,r*2+1); }
 };
