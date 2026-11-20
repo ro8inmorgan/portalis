@@ -1,4 +1,4 @@
-PORTALIS 2.0.0 — Cardputer / Cardputer ADV
+PORTALIS 2.0.1 — Cardputer / Cardputer ADV
 
 A standalone local Wi-Fi connection demo with a readable 240x135 interface.
 No internet uplink is required. Nothing starts broadcasting until you choose Start.
@@ -106,14 +106,15 @@ ANIMATIONS
   Startup shows a brief shimmering PORTALIS logo; press a key to skip it.
   Live counters pulse for 700 ms when their values change. Client joins glow
   mint, departures glow amber, and confirmations get a stronger mint pulse.
-  While the portal runs, the RGB LED slowly breathes blue. A new client causes
+  The selected idle LED animation runs on every screen and in every tool. A new client causes
   two cyan flashes; a confirmation causes two green flashes; a departure causes
   two amber flashes. Confirmations take priority over simultaneous client changes.
   Effects use elapsed time without animation delays, including while viewing
-  submissions/history. The LED turns off when the portal stops.
+  submissions/history. Stopping a tool returns to the idle animation; Off or
+  0% LED brightness disables all LED output.
   On ADV/v1.1, RGB power shares GPIO38 with the display backlight. The display
-  uses full brightness while the portal runs to keep LED power stable, returning
-  to its normal brightness when stopped. The same applies during LED preview.
+  uses full brightness whenever LED effects are enabled to keep LED power stable,
+  returning to normal brightness when LED mode is Off or brightness is 0%. The same applies during LED preview.
   Brightness is adjustable in Settings; the new default is brighter than before.
   Hardware reference: https://docs.m5stack.com/en/core/Cardputer-Adv
 
@@ -270,3 +271,12 @@ WI-FI TOOLS (2.0.0)
   Passwords are masked in the UI, not stored on SD. Flash encryption is not enabled.
   Supports visible open/personal WPA networks; no hidden/WEP/enterprise login.
   See README.md for the full feature guide and screenshots.
+
+INTERACTIVE LED FEEDBACK (2.0.1)
+  The selected idle animation runs in the main menu, KARMA, and every Wi-Fi tool.
+  Menu navigation/selections pulse the connection color. Completed scans, changed
+  networks, ping replies, diagnostic success, and saved submissions use the
+  confirmation color. Scan failures, missed signals, ping timeouts, diagnostic
+  failures, and disconnects use the disconnect color. Joins flash the connection
+  color. Portal confirmation flashes have priority over navigation pulses.
+  LED brightness and colors remain configurable; Off/0% disables all effects.

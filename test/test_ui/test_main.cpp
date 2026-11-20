@@ -282,4 +282,47 @@ void test_wifi_tools_screens_fit() {
     }
     TEST_ASSERT_EQUAL(0,canvas.violations);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }
+void test_app_led_idle_everywhere_and_event_priority() {
+    AppLedFeedback led;
+    LedPalette palette{{0,0,255},{0,255,0},{255,0,0},{255,255,0}};
+    // No active portal or radio is needed for the idle effect.
+    for (uint32_t now : {0U,1000U,5000U,UINT32_MAX}) {
+        auto c=led.render(now,100,palette,LedAnimation::Steady);
+        TEST_ASSERT_EQUAL(100,c.blue);
+    }
+    led.signal(LedEvent::Move,100);
+    auto c=led.render(100,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.green);
+    c=led.render(175,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
+    led.signal(LedEvent::Confirm,200);led.signal(LedEvent::Move,250);
+    c=led.render(250,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.red);TEST_ASSERT_EQUAL(0,c.green);
+    c=led.render(400,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(0,c.red+c.green+c.blue);
+    c=led.render(500,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.red);
+    c=led.render(800,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
+    led.signal(LedEvent::Failure,900);led.signal(LedEvent::Success,950);
+    c=led.render(950,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.red);TEST_ASSERT_EQUAL(255,c.green);
+}
+void test_app_led_off_zero_wrap_and_portal_resume() {
+    AppLedFeedback led;
+    LedPalette palette{{0,0,255},{0,255,0},{255,0,0},{255,255,0}};
+    led.signal(LedEvent::Confirm,0);
+    auto c=led.render(0,100,palette,LedAnimation::Off);TEST_ASSERT_EQUAL(0,c.red+c.green+c.blue);
+    c=led.render(1,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
+    led.signal(LedEvent::Success,2);
+    c=led.render(2,0,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(0,c.red+c.green+c.blue);
+    led.signal(LedEvent::Move,UINT32_MAX-20);
+    c=led.render(25,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.green);
+    c=led.render(80,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
+    led.observePortal(0,0,1,true,100);
+    led.observePortal(1,0,1,true,200);
+    c=led.render(200,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.green);
+    led.signal(LedEvent::Success,220);
+    c=led.render(220,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.green);
+    led.observePortal(1,1,1,true,250);
+    c=led.render(250,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.red);
+    led.observePortal(0,0,1,false,1000);
+    c=led.render(1000,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(255,c.red);TEST_ASSERT_EQUAL(255,c.green);
+    c=led.render(1600,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
+    led.observePortal(8,20,2,true,1700);
+    c=led.render(1700,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }

@@ -113,4 +113,56 @@ public:
         return ledBrightness(ledIntensity(idle, intensity), brightnessPercent);
     }
 };
+// Shared feedback across all screens. Idle animation is independent of radio
+// ownership; short tool/menu pulses and the original portal flashes overlay it.
+enum class LedEvent : uint8_t { None, Move, Select, Activity, Success, Join, Leave, Failure, Confirm };
+class AppLedFeedback {
+    LedActivity idle_;
+    LedEvent event_=LedEvent::None;
+    uint32_t started_=0, clients_=0, confirmations_=0, session_=0;
+    bool portalRunning_=false;
+    static uint32_t duration(LedEvent event) {
+        switch (event) {
+            case LedEvent::Move: return 75;
+            case LedEvent::Select: case LedEvent::Activity: return 120;
+            case LedEvent::Success: return 160;
+            case LedEvent::Failure: return 220;
+            case LedEvent::Join: case LedEvent::Leave: case LedEvent::Confirm: return 600;
+            default: return 0;
+        }
+    }
+    static int priority(LedEvent event) {
+        switch (event) {
+            case LedEvent::Confirm:return 4;
+            case LedEvent::Failure:case LedEvent::Leave:case LedEvent::Join:return 3;
+            case LedEvent::Success:return 2;
+            case LedEvent::None:return 0;
+            default:return 1;
+        }
+    }
+public:
+    void signal(LedEvent event, uint32_t now) {
+        if (event==LedEvent::None) return;
+        if (static_cast<uint32_t>(now-started_)<duration(event_) && priority(event)<priority(event_)) return;
+        event_=event;started_=now;
+    }
+    void observePortal(uint32_t clients, uint32_t confirmations, uint32_t session, bool running, uint32_t now) {
+        if (running && portalRunning_ && session==session_) {
+            if (confirmations>confirmations_) signal(LedEvent::Confirm,now);
+            else if (clients!=clients_) signal(clients>clients_ ? LedEvent::Join : LedEvent::Leave,now);
+        } else if (!running && portalRunning_) signal(LedEvent::Leave,now);
+        clients_=clients;confirmations_=confirmations;session_=session;portalRunning_=running;
+    }
+    LedColor render(uint32_t now, uint8_t brightness, const LedPalette& palette, LedAnimation animation) {
+        if (!brightness || animation==LedAnimation::Off) { event_=LedEvent::None;return {}; }
+        const auto base=idle_.update(0,0,0,true,now,brightness,palette,animation);
+        const uint32_t age=now-started_;
+        if (event_==LedEvent::None || age>=duration(event_)) { event_=LedEvent::None;return base; }
+        if ((event_==LedEvent::Join || event_==LedEvent::Leave || event_==LedEvent::Confirm) &&
+            ! (age<150 || (age>=300 && age<450))) return {};
+        const auto color=(event_==LedEvent::Confirm || event_==LedEvent::Success) ? palette.confirm :
+            (event_==LedEvent::Leave || event_==LedEvent::Failure) ? palette.disconnect : palette.connect;
+        return ledBrightness(color,brightness);
+    }
+};
 } // namespace portalis

@@ -25,6 +25,7 @@ RadarAccessPoint networkChoice;
 int toolHomeIndex=ChannelsHome;
 bool channelOverlapView=false;
 ProbeTest probe;
+AppLedFeedback ledFeedback;
 ProbeConfig probeConfig;
 CarouselMotion carousel;
 int homeReturnIndex = 0;
@@ -55,7 +56,7 @@ alignas(16) uint8_t frameBuffer[240 * 135];
 
 void show(Screen next) { screen = next; selected = 0; screenSince = millis(); }
 void openHome(int index = 0) { homeReturnIndex = index; show(Screen::Home); selected = index; carousel.reset(index, millis()); }
-void notice(const std::string& message, Screen back) { error = message; returnScreen = back; show(Screen::Error); }
+void notice(const std::string& message, Screen back) { ledFeedback.signal(LedEvent::Failure,millis()); error = message; returnScreen = back; show(Screen::Error); }
 void saveConfig() {
     if (!preferencesReady) return;
     preferences.putString("ssid", ssid.c_str());
@@ -155,6 +156,7 @@ void clearPendingProfile() {
 }
 void clearNetworkPassword() { std::fill(draft.begin(),draft.end(),'\0'); draft.clear(); }
 void stopWifiTool() {
+    ledFeedback.signal(LedEvent::Leave,millis());
     clearNetworkPassword(); clearPendingProfile(); scanner.stop(); networkTools.stop();
     if (networkTools.busy()) show(Screen::NetworkStopping);
     else openHome(toolHomeIndex);
@@ -182,6 +184,8 @@ void handleKey(char key) {
     const bool enter = key == '\n', back = key == '\b', escape = key == '`';
     const bool up = key == ';', down = key == '.';
     const Screen before = screen;
+    const int oldSelected = selected;
+    const bool probeWasRunning = probe.running();
     bool settingChanged = false;
     switch (screen) {
         case Screen::Splash:
@@ -449,6 +453,11 @@ void handleKey(char key) {
             }
             break;
     }
+    if (probeWasRunning && !probe.running()) ledFeedback.signal(LedEvent::Leave,millis());
+    if (screen!=before || enter || settingChanged || key=='r' || key=='R' || key=='p' || key=='P')
+        ledFeedback.signal(LedEvent::Select,millis());
+    else if (selected!=oldSelected || (key>=32 && key<=126) || back)
+        ledFeedback.signal(LedEvent::Move,millis());
     if (up || down || settingChanged) screenSince = millis();
     if (settingChanged || enter || escape || back || (before != Screen::Name && (up || down)))
         menuSound(enter || settingChanged);
@@ -516,11 +525,10 @@ void render() {
         M5.Speaker.setVolume(uiSettings.speakerVolume());
         M5.Speaker.tone(note.frequency, note.duration, 1, true);
     }
-    static LedActivity led;
     const auto palette = uiSettings.ledPalette();
     const auto animation = static_cast<LedAnimation>(uiSettings.ledAnimation);
-    LedColor color = led.update(view.clients, view.count, view.session, view.running, view.now,
-                                uiSettings.ledBrightness, palette, animation);
+    ledFeedback.observePortal(view.clients,view.count,view.session,view.running,view.now);
+    LedColor color = ledFeedback.render(view.now,uiSettings.ledBrightness,palette,animation);
     const bool previewLed = screen == Screen::Settings && (selected == 2 || selected >= 6);
     if (previewLed) {
         if (selected >= 7 && selected <= 9) {
@@ -531,10 +539,11 @@ void render() {
         }
     }
     if (animation == LedAnimation::Off) color = {};
-    const bool useLedPower = (view.running || previewLed) && uiSettings.ledBrightness != 0 && animation != LedAnimation::Off;
+    const bool useLedPower = uiSettings.ledBrightness != 0 && animation != LedAnimation::Off;
     static bool ledPowered = false;
     // ADV/v1.1 share GPIO38 between backlight and RGB power. Keep power steady
-    // while animating; PWM dimming can reset the WS2812. Restore idle brightness.
+    // throughout the app; PWM dimming can reset the WS2812. Restore display
+    // brightness only when the LED is disabled (Off or zero brightness).
     if (useLedPower && !ledPowered) M5.Display.setBrightness(255);
     neopixelWrite(21, color.red, color.green, color.blue);
     if (!useLedPower && ledPowered) M5.Display.setBrightness(160);
@@ -591,7 +600,9 @@ void setup() {
         templatePath.clear(); page = PageTemplate{};
     }
     probe.init([](Event event, const std::string& fields) {
-        return storage.appendSubmission(event, fields);
+        const bool saved=storage.appendSubmission(event,fields);
+        ledFeedback.signal(saved ? LedEvent::Confirm : LedEvent::Failure,millis());
+        return saved;
     });
     portal.init([](Event event, const std::string& fields) {
         // Never acknowledge entered data unless it was persisted successfully.
@@ -608,8 +619,31 @@ void loop() {
     M5Cardputer.update();
     pollKeyboard();
     portal.poll();
+    const auto probePhase=probe.status().phase;
+    const auto probeJoins=probe.status().joins;
     probe.poll();
+    if (probe.status().joins>probeJoins) ledFeedback.signal(LedEvent::Join,millis());
+    else if (probe.status().phase!=probePhase) {
+        if (probe.status().phase==ProbePhase::Failed) ledFeedback.signal(LedEvent::Failure,millis());
+        else if (probe.status().phase==ProbePhase::Waiting) ledFeedback.signal(LedEvent::Activity,millis());
+        else if (probe.status().phase==ProbePhase::Listening && probePhase==ProbePhase::Notice) ledFeedback.signal(LedEvent::Leave,millis());
+        else if (probe.status().phase==ProbePhase::Listening && probePhase==ProbePhase::Waiting) ledFeedback.signal(LedEvent::Failure,millis());
+    }
+    const auto networkPhase=networkTools.status().phase;
+    const uint32_t sent=networkTools.status().ping.sent, received=networkTools.status().ping.received;
     networkTools.poll();
+    const auto& currentNetwork=networkTools.status();
+    if (currentNetwork.phase!=networkPhase) {
+        if (currentNetwork.phase==NetworkPhase::Failed) ledFeedback.signal(LedEvent::Failure,millis());
+        else if (networkPhase==NetworkPhase::Connecting && currentNetwork.dhcp==CheckState::Pass) ledFeedback.signal(LedEvent::Join,millis());
+        else if (networkPhase==NetworkPhase::Checking && currentNetwork.phase==NetworkPhase::Ready)
+            ledFeedback.signal(currentNetwork.gatewayCheck==CheckState::Pass && currentNetwork.dns==CheckState::Pass && currentNetwork.internet==CheckState::Pass ? LedEvent::Success : LedEvent::Failure,millis());
+        else if (currentNetwork.phase==NetworkPhase::Idle) ledFeedback.signal(LedEvent::Leave,millis());
+    }
+    if (currentNetwork.ping.sent>sent) {
+        const bool missed=currentNetwork.ping.sent-currentNetwork.ping.received>sent-received;
+        ledFeedback.signal(missed ? LedEvent::Failure : LedEvent::Success,millis());
+    }
     if (!pendingProfile.ssid.empty()) {
         const auto& connection=networkTools.status();
         if (connection.dhcp==CheckState::Pass && (connection.phase==NetworkPhase::Ready || connection.phase==NetworkPhase::Checking)) {
@@ -625,8 +659,27 @@ void loop() {
     scanner.poll();
     if ((screen == Screen::Radar || screen == Screen::ScanList || screen == Screen::ToolNetworks) && scanner.snapshot().generation != generation)
         selected = radarSelection(scanner.snapshot(), selectedId);
-    if (screen==Screen::Signal) signalHistory.update(scanner.snapshot());
-    if (screen==Screen::Changes) networkChanges.update(scanner.snapshot());
+    if (scanner.snapshot().generation!=generation) {
+        if (scanner.snapshot().failed) ledFeedback.signal(LedEvent::Failure,millis());
+        else if (screen!=Screen::Signal && screen!=Screen::Changes) ledFeedback.signal(LedEvent::Success,millis());
+    }
+    if (screen==Screen::Signal) {
+        const auto previousSample=signalHistory.samples.latest();
+        const auto previousGeneration=signalHistory.generation;
+        signalHistory.update(scanner.snapshot());
+        if (signalHistory.generation!=previousGeneration) {
+            const bool visible=signalHistory.samples.latest()!=kMissingSample;
+            ledFeedback.signal(!visible ? LedEvent::Failure : previousSample==kMissingSample ? LedEvent::Join : LedEvent::Activity,millis());
+        }
+    }
+    if (screen==Screen::Changes) {
+        const auto oldCount=networkChanges.count;
+        const auto oldEvent=networkChanges.events[0];
+        networkChanges.update(scanner.snapshot());
+        if (networkChanges.count!=oldCount || networkChanges.events[0].at!=oldEvent.at || std::strcmp(networkChanges.events[0].text,oldEvent.text))
+            ledFeedback.signal(LedEvent::Success,millis());
+        else if (scanner.snapshot().generation!=generation && !scanner.snapshot().failed) ledFeedback.signal(LedEvent::Activity,millis());
+    }
     if (screen == Screen::Splash && static_cast<uint32_t>(millis() - screenSince) >= kSplashDuration) openHome();
     static uint32_t lastFrame = 0;
     if (millis() - lastFrame >= 50) { lastFrame = millis(); render(); }

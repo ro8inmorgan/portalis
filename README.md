@@ -188,13 +188,16 @@ The Wi-Fi network is open and SD logs are unencrypted. Use feedback forms approp
 - Six UI accent colors and three background palettes.
 - Shimmering startup logo, animated carousel icons, pulsing counters, and an estimated battery percentage.
 - LED brightness from 0–100%, plus independent idle, connection, confirmation, and disconnect colors.
-- Five LED modes: **Breathing, Steady, Blink, Rainbow, Off**. Event flashes temporarily override idle animations.
+- Five LED modes: **Breathing, Steady, Blink, Rainbow, Off**. The idle effect runs throughout the app, including the main menu, KARMA and all Wi-Fi tools.
+- Interactive LED feedback: menu navigation/selection pulses; scan completion; signal found/lost; network changes; Wi-Fi joins/disconnects; diagnostic results; ping replies/timeouts; KARMA joins/submissions.
+- Feedback uses the configured connection, confirmation, and disconnect colors. Portal confirmations take priority over navigation pulses. Settings color previews remain available.
+- **Off** or **0% brightness** disables all LED output, including activity feedback.
 - Live LED previews in Settings, including while the portal is stopped.
 - Menu click sounds and separate connection, confirmation, and disconnect chimes.
 - Independent menu/event sound toggles and volume from 0–100%.
 - Device settings persist across reboots without needing an SD card.
 
-On Cardputer ADV, LED power shares the display-backlight pin: active LED effects use full display brightness. Battery percentage is a voltage-based estimate, not a precise fuel gauge or charging indicator.
+On Cardputer ADV, LED power shares the display-backlight pin: enabled LED effects use full display brightness throughout the app, returning to normal brightness when LED mode is Off or brightness is 0%. Battery percentage is a voltage-based estimate, not a precise fuel gauge or charging indicator.
 
 ## Controls
 
@@ -251,7 +254,7 @@ uvx --with requests --from platformio pio test -e native
 
 Dependencies are pinned in `platformio.ini`. The flashable output is `dist/portalis.bin`. Local builds also produce an application-only image, manifests, and ZIP packages for development; only the full image is uploaded to releases.
 
-**Known validation limitations:** the v2.0.0 build succeeds, with 70 native tests passing. Two existing `test_probe_scope` tests fail because they expect an SSID restriction that the current implementation does not enforce. Physical-device testing is still needed to validate all features.
+**Known validation limitations:** the v2.0.1 build succeeds, with 72 native tests passing. Two existing `test_probe_scope` tests fail because they expect an SSID restriction that the current implementation does not enforce. Physical-device testing is still needed to validate all features.
 
 To regenerate the previews after building dependencies:
 
