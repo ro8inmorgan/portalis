@@ -44,6 +44,7 @@ public:
     bool begin(int, FakeSPI&, int) { return present; } void end() {}
     int cardType() const { return present ? 1 : CARD_NONE; }
     bool exists(const char* path) const { return nodes.count(path); }
+    bool remove(const char* path) { return nodes.erase(path) != 0; }
     bool mkdir(const char* path) { seed(path, "", true); return true; }
     File open(const char* path, const char* mode = "r") {
         if (!present) return {};

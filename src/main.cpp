@@ -24,6 +24,8 @@ BrowserPage browser;
 PortalConfig portalConfig;
 UiSettings uiSettings;
 Screen settingsReturn = Screen::Setup;
+Screen templatesReturn = Screen::Setup;
+std::optional<std::string> probeTemplatePath;
 std::vector<SubmissionEntry> submissions;
 SubmissionView submission;
 Screen submissionsReturn = Screen::Setup;
@@ -74,8 +76,8 @@ void openNames(bool remount = false) {
     if (!storage.loadConfig(portalConfig, message)) notice(message, Screen::Names);
 }
 void browse(const std::string& directory, size_t offset = 0, bool last = false) {
-    if (!storage.browse(directory, offset, browser)) {
-        storage.browse("/", 0, browser);
+    if (!storage.browse(directory, offset, browser, templatesReturn != Screen::Probe)) {
+        storage.browse("/", 0, browser, templatesReturn != Screen::Probe);
         notice("Folder unavailable. Returned to SD root.", Screen::Templates);
         return;
     }
@@ -84,7 +86,8 @@ void browse(const std::string& directory, size_t offset = 0, bool last = false) 
     screenSince = millis();
 }
 void parentFolder() {
-    if (browser.directory == "/") { show(Screen::Setup); return; }
+    // Previously the shared picker always returned to Setup.
+    if (browser.directory == "/") { show(templatesReturn); return; }
     const size_t slash = browser.directory.find_last_of('/');
     browse(slash == 0 ? "/" : browser.directory.substr(0, slash));
 }
@@ -109,7 +112,16 @@ void openSubmissions(Screen back) {
 }
 void reloadProbeConfig() {
     std::string message;
-    if (!loadProbeConfig(probeConfig, message)) notice(message, Screen::Probe);
+    if (!loadProbeConfig(probeConfig, message, probeTemplatePath)) notice(message, Screen::Probe);
+}
+void startProbe() {
+    reloadProbeConfig();
+    if (screen != Screen::Probe) return;
+    if (probeConfig.noticePath.empty() || probeConfig.noticeHtml.empty()) {
+        notice("Choose an HTML page before starting.", Screen::Probe); return;
+    }
+    if (!probe.start(probeConfig)) notice("Probe test could not start. Try again.", Screen::Probe);
+    else show(Screen::Probe);
 }
 void handleKey(char key) {
     const bool enter = key == '\n', back = key == '\b', escape = key == '`';
@@ -143,7 +155,7 @@ void handleKey(char key) {
             if (down) selected = (selected + 1) % 4;
             if (enter) {
                 if (selected == 0) openNames();
-                else if (selected == 1) browse("/");
+                else if (selected == 1) { templatesReturn = Screen::Setup; browse("/"); }
                 else if (selected == 2) startPortal();
                 else if (selected == 3) openSubmissions(Screen::Setup);
             }
@@ -163,16 +175,23 @@ void handleKey(char key) {
             break;
         case Screen::Probe:
             if (escape || back) { probe.stop(); openHome(2); }
-            else if (enter) show(Screen::ProbeScope);
+            else if (!probe.running() && up) selected = (selected + 2) % 3;
+            else if (!probe.running() && down) selected = (selected + 1) % 3;
+            else if (enter) {
+                if (probe.running()) show(Screen::ProbeScope);
+                else if (selected == 0) { templatesReturn = Screen::Probe; browse("/"); }
+                else if (selected == 1) startProbe();
+                else if (selected == 2) openSubmissions(Screen::Probe);
+            }
             else if (key == 'h' || key == 'H') show(Screen::ProbeHistory);
+            else if ((key == 't' || key == 'T') && !probe.running()) {
+                templatesReturn = Screen::Probe; browse("/");
+            }
+            else if (key == 'v' || key == 'V') openSubmissions(Screen::Probe);
             else if ((key == 'r' || key == 'R') && !probe.running()) { storage.begin(); reloadProbeConfig(); }
             else if (key == 's' || key == 'S') {
-                if (probe.running()) probe.stop();
-                else {
-                    reloadProbeConfig();
-                    if (screen != Screen::Probe) break;
-                    else if (!probe.start(probeConfig)) notice("Probe test could not start. Try again.", Screen::Probe);
-                }
+                if (probe.running()) { probe.stop(); show(Screen::Probe); }
+                else startProbe();
             }
             break;
         case Screen::ProbeScope:
@@ -221,7 +240,8 @@ void handleKey(char key) {
             else if (key >= 32 && key <= 126 && draft.size() < 32) draft += key;
             break;
         case Screen::Templates:
-            if (escape) { show(Screen::Setup); break; }
+            // Previous picker exit: if (escape) { show(Screen::Setup); break; }
+            if (escape) { show(templatesReturn); break; }
             if (back) { parentFolder(); break; }
             if (key == 'r' || key == 'R') { storage.begin(); browse("/"); break; }
             if (up) {
@@ -235,6 +255,18 @@ void handleKey(char key) {
             if (enter && browser.count) {
                 const BrowserEntry entry = browser.entries[selected];
                 if (entry.directory) browse(entry.path);
+                else if (templatesReturn == Screen::Probe) {
+                    if (entry.path.empty()) { notice("Choose an HTML file on SD.", Screen::Templates); break; }
+                    ProbeConfig candidate;
+                    std::string message;
+                    if (!loadProbeConfig(candidate, message, entry.path)) notice(message, Screen::Templates);
+                    else {
+                        probeConfig = std::move(candidate);
+                        probeTemplatePath = entry.path;
+                        if (preferencesReady) preferences.putString("probe_template", probeTemplatePath->c_str());
+                        show(Screen::Probe);
+                    }
+                }
                 else {
                     PageTemplate candidate;
                     std::string message;
@@ -394,6 +426,9 @@ void setup() {
         const std::string saved = preferences.getString("ssid", "Portalis Demo").c_str();
         if (validSsid(saved)) ssid = saved;
         templatePath = preferences.getString("template", "").c_str();
+        // A missing or old empty preference uses notice_template in portalis.json.
+        const std::string savedProbeTemplate = preferences.getString("probe_template", "\n").c_str();
+        if (savedProbeTemplate != "\n" && !savedProbeTemplate.empty()) probeTemplatePath = savedProbeTemplate;
         uiSettings.accent = preferences.getUChar("ui_accent", 0);
         uiSettings.background = preferences.getUChar("ui_bg", 0);
         uiSettings.ledBrightness = preferences.getUChar("led_bright", 80);

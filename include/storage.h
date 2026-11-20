@@ -24,7 +24,7 @@ public:
     bool ready() const { return mounted_; }
     bool logHealthy() const { return logHealthy_; }
     bool loadConfig(PortalConfig& result, std::string& error);
-    bool browse(std::string path, size_t offset, BrowserPage& result);
+    bool browse(std::string path, size_t offset, BrowserPage& result, bool includeBuiltIn = true);
     bool loadTemplate(const std::string& path, PageTemplate& result, std::string& error);
     bool listSubmissions(std::vector<SubmissionEntry>& entries, std::string& error);
     bool readSubmission(const SubmissionEntry& entry, SubmissionView& result, std::string& error);

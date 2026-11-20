@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <optional>
 
 namespace portalis {
 struct ProbeCandidate {
@@ -15,9 +16,11 @@ struct ProbeCandidate {
 struct ProbeConfig {
     std::array<std::string, 16> ssids{};
     size_t count = 0;
-    uint32_t cooldownSeconds = 600;
+    uint32_t cooldownSeconds = 120;
     std::string noticeHtml; // Loaded once from the optional SD notice template.
+    std::string noticePath;
     bool permits(const char* ssid) const {
+        // Previous unrestricted behavior, retained for reference:
         return ssid && *ssid;
     }
 };
@@ -94,7 +97,7 @@ enum class ProbePhase { Idle, Listening, Waiting, Notice, Failed };
 struct ProbeEvent { char ssid[33] = {}; uint32_t seconds = 0; bool connected = false; };
 struct ProbeStatus {
     ProbePhase phase = ProbePhase::Idle;
-    uint32_t attempts = 0, joins = 0, approvedProbes = 0, remaining = 0;
+    uint32_t attempts = 0, joins = 0, remaining = 0;
     uint8_t channel = 1;
     char ssid[33] = {};
     std::array<ProbeEvent, 32> events{};
@@ -108,5 +111,6 @@ struct ProbeStatus {
 };
 inline constexpr const char kProbeNotice[] = "";
 std::string renderProbeNotice(const std::string& html, const std::string& ticket = "");
-bool loadProbeConfig(ProbeConfig& config, std::string& error);
+// No override uses portalis.json; an empty path means no template selected.
+bool loadProbeConfig(ProbeConfig& config, std::string& error, const std::optional<std::string>& selectedTemplate = std::nullopt);
 } // namespace portalis

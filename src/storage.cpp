@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "portal_defaults.h"
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <SPI.h>
@@ -13,6 +14,7 @@ bool Storage::begin() {
     SPI.begin(40, 39, 14, 12);
     mounted_ = SD.begin(12, SPI, 10000000) && SD.cardType() != CARD_NONE;
     logHealthy_ = mounted_;
+    if (mounted_) { std::string error; ensurePortalConfig(error); }
     return mounted_;
 }
 
@@ -20,7 +22,8 @@ bool Storage::loadConfig(PortalConfig& result, std::string& error) {
     result = PortalConfig{};
     error.clear();
     // A config is optional; manual naming always remains available.
-    if (!mounted_ || !SD.exists("/portalis.json")) return true;
+    if (!mounted_) return true;
+    if (!ensurePortalConfig(error)) return false;
     File file = SD.open("/portalis.json");
     if (!file || file.isDirectory() || file.size() > 4096) {
         error = "Cannot read portalis.json (max 4 KB)."; return false;
@@ -46,13 +49,13 @@ bool Storage::loadConfig(PortalConfig& result, std::string& error) {
     return true;
 }
 
-bool Storage::browse(std::string path, size_t offset, BrowserPage& result) {
+bool Storage::browse(std::string path, size_t offset, BrowserPage& result, bool includeBuiltIn) {
     result = BrowserPage{};
     result.directory = path;
     result.offset = offset;
     // Sort the complete directory before pagination, not each page separately.
     std::vector<BrowserEntry> entries;
-    if (path == "/") entries.push_back({"Aurora (built-in)", "", false});
+    if (includeBuiltIn && path == "/") entries.push_back({"Aurora (built-in)", "", false});
     if (mounted_) {
         File dir = SD.open(path.c_str());
         if (!dir || !dir.isDirectory()) { result.total = entries.size(); return false; }

@@ -24,6 +24,7 @@ void ProbeTest::sendPage() {
 void ProbeTest::init(std::function<bool(Event, const std::string&)> onFeedback) {
     instance_ = this;
     onFeedback_ = std::move(onFeedback);
+    server_.on("/", HTTP_GET, [this]() { sendPage(); });
     server_.on("/confirm", HTTP_POST, [this]() {
         securityHeaders();
         if (!active_ || !schedule_.active()) { server_.send(503, "text/plain", "Test is stopped."); return; }
@@ -48,7 +49,10 @@ void ProbeTest::init(std::function<bool(Event, const std::string&)> onFeedback) 
     });
     server_.onNotFound([this]() {
         if (server_.method() != HTTP_GET) { securityHeaders(); server_.send(405, "text/plain", "Method not allowed"); return; }
-        sendPage();
+        // Previous catch-all: sendPage();
+        securityHeaders();
+        server_.sendHeader("Location", "http://172.0.0.1/");
+        server_.send(302, "text/plain", "Open the local test feedback page.");
     });
 }
 void ProbeTest::receive(void* packet, wifi_promiscuous_pkt_type_t type) {
@@ -85,7 +89,7 @@ bool ProbeTest::listen() {
     status_.phase = ProbePhase::Listening; hopped_ = millis(); return true;
 }
 bool ProbeTest::start(const ProbeConfig& config) {
-    if (active_ ||
+    if (active_ || config.noticePath.empty() || config.noticeHtml.empty() || !config.permits("test") ||
         config.cooldownSeconds < 60 || config.cooldownSeconds > 86400 || (WiFi.getMode() & WIFI_MODE_AP)) return false;
     if (!queue_) queue_ = xQueueCreate(8, sizeof(ProbeCandidate));
     if (!queue_) return false;
@@ -104,11 +108,14 @@ void ProbeTest::beginAttempt(const ProbeCandidate& candidate) {
     status_.ssid[32] = '\0'; status_.channel = candidate.channel;
     const IPAddress ip(172, 0, 0, 1), mask(255, 255, 255, 0);
     if (!WiFi.mode(WIFI_AP) || !WiFi.softAPConfig(ip, ip, mask) ||
-        !WiFi.softAP(candidate.ssid, nullptr, candidate.channel, 0, 4) || !dns_.start(53, "*", ip)) {
+        // Previously DNS was also started here: || !dns_.start(53, "*", ip)
+        !WiFi.softAP(candidate.ssid, nullptr, candidate.channel, 0, 4)) {
         endAttempt(); return;
     }
-     dns_.setErrorReplyCode(DNSReplyCode::NoError);
-    if (!dns_.start(53, "*", ip)) { WiFi.softAPdisconnect(true); WiFi.mode(WIFI_OFF); return; }
+    dns_.setErrorReplyCode(DNSReplyCode::NoError);
+    // Previous failure cleanup left the schedule active with the radio off:
+    // if (!dns_.start(53, "*", ip)) { WiFi.softAPdisconnect(true); WiFi.mode(WIFI_OFF); return; }
+    if (!dns_.start(53, "*", ip)) { endAttempt(); return; }
     tickets_.clear();
     server_.begin(); status_.phase = ProbePhase::Waiting;
     status_.remaining = schedule_.remaining(millis());
@@ -138,7 +145,6 @@ void ProbeTest::poll() {
     ProbeCandidate candidate;
     for (int i = 0; i < 8 && xQueueReceive(queue_, &candidate, 0) == pdTRUE; ++i) {
         if (static_cast<uint32_t>(now - candidate.capturedAt) > 2000) continue;
-        ++status_.approvedProbes;
         beginAttempt(candidate);
         if (schedule_.active() || !active_) return;
     }

@@ -4,8 +4,8 @@
 #include "../../src/probe_config.cpp"
 using namespace portalis;
 void setUp() { SD.reset(); } void tearDown() {}
-ProbeConfig scope() { ProbeConfig c; c.ssids[0] = "My Lab"; c.ssids[1] = "Other Lab"; c.count = 2; return c; }
-ProbeCandidate candidate(unsigned id = 1, const char* name = "My Lab") { ProbeCandidate p; p.device = {2,0,0,0,0,static_cast<uint8_t>(id)}; strcpy(p.ssid, name); return p; }
+ProbeConfig scope() { ProbeConfig c; c.cooldownSeconds = 600; c.ssids[0] = "test"; c.count = 1; return c; }
+ProbeCandidate candidate(unsigned id = 1, const char* name = "test") { ProbeCandidate p; p.device = {2,0,0,0,0,static_cast<uint8_t>(id)}; strcpy(p.ssid, name); return p; }
 void test_bounded_probe_parser() {
     uint8_t frame[80] = {}; frame[0] = 0x40; frame[10] = 2; frame[24] = 0; frame[25] = 6;
     memcpy(frame + 26, "My Lab", 6); ProbeCandidate p;
@@ -45,15 +45,17 @@ void test_cooldown_cannot_be_bypassed_by_another_ssid_or_full_cache() {
     TEST_ASSERT_TRUE(s.begin(scope(), candidate(33), 600000));
 }
 void test_config_rejects_invalid_input() {
-    ProbeConfig c = scope(); std::string error;
-    TEST_ASSERT_FALSE(loadProbeConfig(c, error)); TEST_ASSERT_EQUAL(0, c.count);
-    for (const char* invalid : {"{}", "broken", R"({"approved_ssids":"all"})", R"({"approved_ssids":[1]})", R"({"approved_ssids":[""]})", R"({"approved_ssids":["My Lab"],"all":true})", R"({"approved_ssids":["My Lab"],"cooldown_seconds":0})", R"({"approved_ssids":["My Lab"],"cooldown_seconds":86401})", R"({"approved_ssids":["My\u0000Lab"]})"}) {
-        c = scope(); SD.seed("/probe-test.json", invalid);
-        TEST_ASSERT_FALSE(loadProbeConfig(c, error)); TEST_ASSERT_EQUAL(0, c.count);
+    ProbeConfig c; std::string error;
+    TEST_ASSERT_TRUE(loadProbeConfig(c, error));
+    TEST_ASSERT_TRUE(c.noticePath.empty());
+    for (const char* invalid : {"broken", "[]", R"({"cooldown_seconds":0})", R"({"cooldown_seconds":86401})", R"({"notice_template":42})"}) {
+        c.noticeHtml = "old"; SD.seed("/portalis.json", invalid);
+        TEST_ASSERT_FALSE(loadProbeConfig(c, error)); TEST_ASSERT_TRUE(c.noticeHtml.empty());
     }
-    SD.seed("/probe-test.json", R"({"approved_ssids":[]})");
-    TEST_ASSERT_TRUE(loadProbeConfig(c, error)); TEST_ASSERT_EQUAL(0, c.count);
+    SD.seed("/portalis.json", R"({"ap_names":[],"notice_template":""})");
+    TEST_ASSERT_TRUE(loadProbeConfig(c, error)); TEST_ASSERT_TRUE(c.noticePath.empty());
 }
+
 void test_notice_and_bounded_history() {
     for (const char* element : {"<form", "<input", "<script", "http://", "https://"}) TEST_ASSERT_NULL(strstr(kProbeNotice, element));
     ProbeStatus status;

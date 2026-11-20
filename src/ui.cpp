@@ -121,7 +121,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::Home: {
             title(c, "PORTALIS");
-            const char* labels[] = {"Portal", "Wi-Fi radar", "Probe test", "Settings"};
+            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Settings"};
             c.setClipRect(0, 26, 240, 66);
             for (int icon = 0; icon < CarouselMotion::count; ++icon) {
                 float delta = icon - v.carouselPosition;
@@ -239,36 +239,36 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             break;
         }
         case Screen::Probe: {
-            title(c, "PROBE TEST");
+            title(c, "KARMA");
+            if (!v.probeRunning) {
+                const std::string path = v.probeConfig ? v.probeConfig->noticePath : "";
+                const std::string pageName = path.empty() ? "Select HTML file" : path.substr(path.find_last_of('/') + 1);
+                const std::array<std::string, 3> labels{{
+                    "Page: " + pageName,
+                    "Start probe test", "Submissions"}};
+                for (int row = 0; row < 3; ++row)
+                    selectedRow(c, labels[row], row, row == v.selected, elapsed);
+                footer(c, ";/. Move ENT Select R SD");
+                break;
+            }
             const ProbeStatus empty;
             const auto& state = v.probeStatus ? *v.probeStatus : empty;
-            const size_t approved = v.probeConfig ? v.probeConfig->count : 0;
             const bool ap = state.phase == ProbePhase::Waiting || state.phase == ProbePhase::Notice;
             if (ap) {
                 ticker(c, state.ssid, 6, 29, 228, elapsed);
                 text(c, std::string(state.phase == ProbePhase::Notice ? "AP joined " : "Waiting ") + std::to_string(state.remaining) + "s", 6, 51, ACCENT);
             } else {
-                text(c, v.probeRunning ? "Listening CH" + std::to_string(state.channel) : state.phase == ProbePhase::Failed ? "Radio error" : approved ? "Ready to test" : "No approved SSIDs", 6, 29, ACCENT);
-                text(c, std::to_string(approved) + " approved SSIDs", 6, 51, MUTED, 1.5f);
+                text(c, v.probeRunning ? "Listening CH" + std::to_string(state.channel) : state.phase == ProbePhase::Failed ? "Radio error" : "Ready to test", 6, 29, ACCENT);
+                // Previous label: text(c, std::to_string(approved) + " approved SSIDs", 6, 51, MUTED, 1.5f);
+                ticker(c, v.probeConfig && !v.probeConfig->noticePath.empty() ? v.probeConfig->noticePath : "Select HTML file", 6, 51, 228, elapsed, MUTED, 1.5f);
             }
             ticker(c, "Tests " + std::to_string(state.attempts) + "  Joined " + std::to_string(state.joins), 6, 74, 228, elapsed, FG, 1.5f);
-            text(c, "ENT Scope  H Log", 6, 96, MUTED, 1.5f);
-            footer(c, v.probeRunning ? "S Stop  Esc Exit" : "S Start R Reload Esc Exit");
+            // Previous hints: "ENT Scope  H Log" / "S Start R Reload Esc Exit"
+            text(c, "ENT Scope H Log V Forms", 6, 96, MUTED, 1.5f);
+            footer(c, v.probeRunning ? "S Stop  Esc Exit" : "S Start T HTML R Reload");
             break;
         }
-        case Screen::ProbeScope: {
-            title(c, "APPROVED SSIDS");
-            const size_t count = v.probeConfig ? v.probeConfig->count : 0;
-            if (!count) {
-                text(c, "List is empty", 6, 34);
-                text(c, "Edit /probe-test.json", 6, 62, MUTED, 1.5f);
-                text(c, "on your SD card.", 6, 82, MUTED, 1.5f);
-            }
-            const int first = std::max(0, v.selected) / 4 * 4;
-            for (int row = 0; row < 4 && first + row < static_cast<int>(count); ++row)
-                selectedRow(c, v.probeConfig->ssids[first + row], row, first + row == v.selected, elapsed);
-            footer(c, ";/. Scroll  Esc Back"); break;
-        }
+
         case Screen::ProbeHistory: {
             title(c, "TEST LOG");
             const size_t count = v.probeStatus ? v.probeStatus->eventCount : 0;

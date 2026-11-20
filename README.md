@@ -62,25 +62,35 @@ MAIN MENU, RADAR AND APPROVED PROBE TEST
   ;/. selects an AP, Enter switches radar/list, R refreshes, Esc stops scanning.
   The scan refreshes automatically. Scanning and portal modes are exclusive.
 
-  Probe test uses /probe-test.json at the SD root. The supplied list is EMPTY,
-  which disables starting. Add only exact SSIDs approved for your test, e.g.:
-    {"approved_ssids":["My Lab Test"],"cooldown_seconds":600}
-  Up to 16 distinct names, 1-32 printable ASCII characters, no edge spaces.
-  Matching is case-sensitive and exact: no wildcard or accept-all syntax.
-  The file is limited to 2 KB. Cooldown range is 60-86400 seconds.
-  Invalid/missing config clears the loaded list; it cannot retain an old scope.
+  Probe settings share /portalis.json with the AP-name presets. A blank writable
+  SD card gets this config automatically when mounted:
+    {"ap_names":["Portalis Demo","Portalis Guest","Portalis Workshop"],"cooldown_seconds":120,"notice_template":""}
+  Existing files are preserved. For older installs, move cooldown_seconds and
+  notice_template from probe-test.json into portalis.json; the old file is no
+  longer read. Missing keys default to 120 seconds and no selected template.
+  The config is limited to 4 KB. Cooldown range is 60-86400 seconds.
+  Without a writable SD card, automatic config creation cannot succeed.
 
-  On the Probe test screen: Enter reviews approved names, R reloads SD while
-  stopped, S starts/stops, H opens the log, Esc stops and returns to the carousel.
-  Every start reloads and validates the config. It never starts automatically.
+  Probe test opens a setup menu before listening: Page, Start probe test,
+  and Submissions. Use ;/. to move and Enter to select.
+  Page opens the SD HTML picker. Choose Start
+  probe test to begin. Stopping returns to this menu.
+  R reloads SD while stopped, S starts/stops, H opens the log, and Esc exits.
+  T opens the HTML picker while stopped; V opens saved form submissions.
+  While running, Enter reviews the approved scope.
+  The selected template is saved separately from the Portal template, persists
+  across reboots, and overrides notice_template. There is no built-in probe page;
+  select an SD HTML file before starting. Every start reloads the config and chosen
+  HTML from SD, so edits take effect. It never starts automatically.
   The listener hops available 2.4 GHz channels and ignores unnamed probes and
   requests outside the list. For an approved request it starts one open test AP
   using that SSID. The AP stays available for at most 120 seconds from the
   attempt start, allowing time to enter feedback, then resumes listening.
   Open http://172.0.0.1 if needed. The configured notice_template is served
-  with a one-use submission ticket. The supplied probe-notice.html requests
-  Username and Feedback; a nickname is fine. Both example fields are required.
-  Add any named form controls to the HTML to extend the captured data.
+  with a one-use submission ticket. The supplied probe-notice.html is clearly
+  labeled as a local test and requests a rating and optional feedback. It does
+  not request account details or passwords. Forms use the existing /confirm
+  submission handler and show a saved confirmation after success.
   Successful submissions are saved to /portalis/submissions.jsonl and can be
   read in Submissions on the device. A save failure displays an error and
   allows retry while the AP remains available. No IP or MAC is stored with feedback.
