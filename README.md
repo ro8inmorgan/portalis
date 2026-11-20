@@ -1,13 +1,13 @@
 # Portalis
 
-Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, scan nearby Wi-Fi networks, and customize the display, RGB LED, and sounds.
+Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, analyze Wi-Fi channels, track signals, diagnose connections, monitor ping and network changes, and customize the display, RGB LED, and sounds.
 
 ## Screenshots
 
 Rendered from the firmware UI using sample data at the display's 240×135 resolution, enlarged for readability. These are software previews, not photographs of a device.
 
 <p align="center">
-  <img src="docs/screenshots/menu.gif" alt="Animated Portalis menu cycling through Portal, Wi-Fi radar, KARMA and Settings" width="720">
+  <img src="docs/screenshots/menu.gif" alt="Nine animated tools: Portal, radar, KARMA, Channels, Signal tracker, Diagnostics, Ping monitor, Network changes, then Settings" width="720">
 </p>
 
 | Live portal dashboard | Wi-Fi radar |
@@ -17,6 +17,14 @@ Rendered from the firmware UI using sample data at the display's 240×135 resolu
 | ![Template and timeout selection](docs/screenshots/karma.png) | ![UI colors and LED brightness settings](docs/screenshots/settings.png) |
 | **Main menu** | **Saved feedback** |
 | ![Main menu carousel](docs/screenshots/home.png) | ![Viewing a saved form submission](docs/screenshots/submission.png) |
+| **Channel analyzer** | **Signal tracker** |
+| ![Per-channel AP counts](docs/screenshots/channels.png) | ![RSSI history with scan gaps](docs/screenshots/signal.png) |
+| **Connection diagnostics** | **Ping monitor** |
+| ![Independent connection checks](docs/screenshots/diagnostics.png) | ![Latency graph and packet loss](docs/screenshots/ping.png) |
+| **Network changes** | **Saved Wi-Fi networks** |
+| ![Observed access-point channel change](docs/screenshots/changes.png) | ![Network picker with a remembered network](docs/screenshots/wifi-picker.png) |
+| **Joining a protected network** | |
+| ![Masked Wi-Fi password entry](docs/screenshots/wifi-join.png) | |
 
 ## Install
 
@@ -33,6 +41,8 @@ Releases contain only `portalis.bin` plus GitHub's automatic source-code ZIP and
 The AP is local and does not provide internet access. Broadcasting starts only when you choose Start.
 
 ## What you can do
+
+Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → Settings**. Settings is last.
 
 ### Portal
 
@@ -52,6 +62,72 @@ The AP is local and does not provide internet access. Broadcasting starts only w
 - Stronger signals appear nearer the radar center. Position is illustrative, not a measured direction or distance.
 
 The scanner lists access points, not connected client devices. Scanning and portal operation are mutually exclusive.
+
+### Join and remember Wi-Fi networks
+
+Diagnostics and Ping need a network connection. Choose a visible network in the picker and enter its password; open networks connect directly. Successfully joined networks are saved automatically and marked with `*` in the picker. Selecting one reconnects with its stored password.
+
+- Remembers up to **five networks**, with the oldest profile replaced when full.
+- Password entry is masked. Failed joins do not overwrite saved credentials.
+- Press **F** on a saved network in the picker to forget it. This also lets you enter a changed password on the next attempt.
+- Profiles are saved in device NVS across reboots, independently of the SD card. This firmware does not enable flash encryption.
+- Supports visible open and personal WPA/WPA2/WPA3 networks. Hidden SSID entry, WEP, and enterprise authentication are not implemented.
+- Joining/address assignment has a **30-second timeout**. A disconnect is shown explicitly.
+
+The radio is dedicated to the selected mode. Diagnostics/Ping cannot run alongside a portal or passive scan. Leaving disconnects from the network; if a DNS check is in progress, cleanup may take about 15 seconds while the UI remains responsive.
+
+### Channel analyzer
+
+- View AP counts across 2.4 GHz channels 1–14, with the strongest RSSI for the selected channel.
+- Counts cover **all returned scan records**, not only the strongest 32 shown in the network picker.
+- Press **Enter** to switch between AP counts and a relative overlap estimate based on channel spacing and signal strength.
+- Use `;` / `.` to select a channel and **R** to refresh.
+
+This is a Wi-Fi scan analysis, not a spectrum analyzer or a measurement of airtime/channel utilization. Results are limited to channels available to the radio in its configured country.
+
+### Signal tracker
+
+- Select an AP and track its **BSSID**, so similarly named networks do not get mixed together.
+- Display current RSSI, a recent average, and a **60-sample graph**.
+- Keep tracking the selected AP even when it falls below the strongest 32 scan results.
+- Missing/failed scans appear as gaps; old readings are not presented as current.
+- **Enter** chooses another AP; **R** requests a refresh.
+
+Each sample is one completed scan, not one second. This tool works without joining the network.
+
+### Connection diagnostics
+
+Join a network and check these stages independently:
+
+| Check | What it measures |
+| --- | --- |
+| Address assignment | Whether the station joined and obtained an IPv4 address; the assigned address is displayed |
+| Gateway | Three ICMP echo attempts to the network's gateway |
+| DNS | Resolution of `example.com` using the network's DNS configuration |
+| Outbound TCP | A TCP connection to `1.1.1.1:443` |
+
+Press **R** to rerun the checks. A gateway can filter ICMP, and networks can block the chosen TCP destination; a failed check alone does not prove the internet is down. This does not perform an HTTP login or verify arbitrary websites.
+
+### Ping monitor
+
+- Starts with the connected network's gateway as its target.
+- Press **T** to enter another **IPv4 address**.
+- Sends approximately one ping per second, with a one-second reply timeout.
+- Shows a **60-result latency graph**, session minimum/average/maximum latency, and packet-loss percentage.
+- Timeouts are marked as gaps. **P** pauses/resumes; **R** resets statistics.
+- Changing target starts fresh statistics. Wi-Fi disconnects are reported explicitly.
+
+Hostname targets are not implemented; use a numeric IPv4 address. An unanswered ping can mean ICMP filtering rather than a disconnected host.
+
+### Network-change monitor
+
+- Takes an initial baseline, then compares successive successful scans by BSSID.
+- Reports newly seen/not-seen APs and changes to channel, security mode, or SSID.
+- Keeps the latest **32 events in RAM**, with device-uptime timestamps.
+- **`;` / `.`** browse events, **C** clears the log/baseline, and **R** requests another scan.
+- Failed scans do not produce disappearance events. Dense scans are marked `Top32`, and absence reports are suppressed when results are truncated.
+
+This mode compares the strongest 32 APs. “Seen” and “Not seen” describe scan observations, not proof that a network was created or shut down. It does not require joining a network and does not save its event log to SD.
 
 ### KARMA / probe test
 
@@ -124,11 +200,17 @@ On Cardputer ADV, LED power shares the display-backlight pin: active LED effects
 
 | Screen | Keys |
 | --- | --- |
-| Main menu | `,` / `/` move between icons; Enter opens |
+| Main menu | `,` / `/` move between all nine icons; Enter opens; Settings is last |
 | Menus | `;` / `.` move; Enter selects; Esc/back returns |
 | Template picker | Enter opens; Backspace goes up; `R` remounts SD |
 | Portal dashboard | `S` submissions; `H` history; `C` settings; `X` stop confirmation |
 | Radar | `;` / `.` select AP; Enter toggles radar/list; `R` refreshes; Esc stops |
+| Wi-Fi picker | `;` / `.` select; Enter joins/tracks; `F` forgets a saved network; `R` scans |
+| Channels | `;` / `.` select channel; Enter toggles counts/overlap; `R` scans; Esc exits |
+| Signal tracker | Enter chooses another AP; `R` scans; Esc exits |
+| Diagnostics | `R` rechecks; Esc disconnects |
+| Ping monitor | `T` target; `P` pause/resume; `R` reset; Esc disconnects |
+| Network changes | `;` / `.` browse; `C` clear; `R` scan; Esc exits |
 | KARMA setup | Page selects HTML; Timeout adjusts with `,` / `/` or Enter (+30s); Start begins |
 | KARMA shortcuts | `S` start/stop; `T` templates while stopped; `V` submissions; `H` log; `R` reload while stopped |
 | Settings | `;` / `.` select; `,` / `/` adjust; Esc/Backspace saves |
@@ -169,7 +251,7 @@ uvx --with requests --from platformio pio test -e native
 
 Dependencies are pinned in `platformio.ini`. The flashable output is `dist/portalis.bin`. Local builds also produce an application-only image, manifests, and ZIP packages for development; only the full image is uploaded to releases.
 
-**Known validation limitations:** the v1.1.0 build succeeds, but two `test_probe_scope` tests fail because they expect an SSID restriction that the current implementation does not enforce. Physical-device testing is still needed to validate all features.
+**Known validation limitations:** the v2.0.0 build succeeds, with 70 native tests passing. Two existing `test_probe_scope` tests fail because they expect an SSID restriction that the current implementation does not enforce. Physical-device testing is still needed to validate all features.
 
 To regenerate the previews after building dependencies:
 

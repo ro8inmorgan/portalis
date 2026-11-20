@@ -1,4 +1,4 @@
-PORTALIS 1.1.0 — Cardputer / Cardputer ADV
+PORTALIS 2.0.0 — Cardputer / Cardputer ADV
 
 A standalone local Wi-Fi connection demo with a readable 240x135 interface.
 No internet uplink is required. Nothing starts broadcasting until you choose Start.
@@ -253,3 +253,20 @@ KARMA TIMEOUT
   A connection does not reset or extend the countdown. Cooldown is independent.
   Menu changes are saved on the device and override timeout_seconds in portalis.json.
   The chosen value survives template selection, reloads, and reboots.
+
+WI-FI TOOLS (2.0.0)
+  Main menu: Portal, Wi-Fi radar, KARMA, Channels, Signal tracker, Diagnostics,
+  Ping monitor, Network changes, Settings. Each has an animated icon.
+  Channels: Enter toggles AP counts/overlap estimate; ;/. selects; R scans.
+  Signal: select an AP, then view 60 RSSI samples; Enter chooses another AP.
+  Diagnostics: join Wi-Fi, then check address, gateway ping, DNS example.com,
+  and outbound TCP 1.1.1.1:443 independently. R reruns checks.
+  Ping: gateway by default; T sets an IPv4 target, P pauses, R resets statistics.
+  Network changes: 32 events in RAM; ;/. scroll, C clears, R scans. Compares the
+  strongest 32 APs; failed/truncated scans do not produce absence claims.
+  Esc leaves tools and releases the radio. DNS cleanup can take about 15 seconds.
+  Wi-Fi picker: saved networks have *. F forgets the selected network. Successful
+  joins remember up to five profiles in NVS; older profiles are evicted when full.
+  Passwords are masked in the UI, not stored on SD. Flash encryption is not enabled.
+  Supports visible open/personal WPA networks; no hidden/WEP/enterprise login.
+  See README.md for the full feature guide and screenshots.

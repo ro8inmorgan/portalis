@@ -83,7 +83,7 @@ def main():
                         "-o", str(binary)], check=True)
         result = subprocess.run([str(binary)], check=True, text=True, stdout=subprocess.PIPE)
         render(result.stdout.splitlines())
-    print(f"Rendered six PNG previews and an animated menu to {OUT}")
+    print(f"Rendered {len(list(OUT.glob('*.png')))} PNG previews and an animated menu to {OUT}")
 
 
 if __name__ == "__main__":
