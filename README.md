@@ -1,13 +1,17 @@
 # Portalis
 
-A WIFI, networking, pentesting toolset firmware for the Cardputer Adv to test, diagnose and learn about your own network environment
+A WIFI, networking, pentesting, diagnosing toolset firmware for the Cardputer Adv to test, diagnose and learn about your own network environment
+
+## Disclaimer
+
+These tools are intended for testing, diagnosing, and analyzing your own network or networks you have explicit permission to assess. Do not use them for unauthorized access, monitoring, or any other unauthorized activity.
 
 ## Screenshots
 
 Rendered from the firmware UI using sample data at the display's 240×135 resolution, enlarged for readability. These are software previews, not photographs of a device.
 
 <p align="center">
-  <img src="docs/screenshots/menu.gif" alt="Fourteen animated tools including IP range scan, host port scan, SSH terminal, packet capture, MicroPython scripts, and two rotating Settings gears" width="720">
+  <img src="docs/screenshots/menu.gif" alt="Seventeen animated tools including IP range scan, host port scan, SSH terminal, packet capture, MicroPython scripts, and two rotating Settings gears" width="720">
 </p>
 
 | Live portal dashboard | Wi-Fi radar |
@@ -37,10 +41,16 @@ Rendered from the firmware UI using sample data at the display's 240×135 resolu
 | ![Channel selection and capture start](docs/screenshots/capture-setup.png) | ![Packet counts and SD capture filename](docs/screenshots/capture-live.png) |
 | **Python script picker** | **MicroPython output** |
 | ![Choose a Python script from SD](docs/screenshots/python-scripts.png) | ![Python output on the Cardputer](docs/screenshots/python-output.png) |
+| **Wi-Fi survey recorder** | **Local file transfer** |
+| ![Recording scan observations to CSV](docs/screenshots/survey.png) | ![Local address and temporary access code](docs/screenshots/file-transfer.png) |
+| **On-device script editor** | **Saved SSH hosts** |
+| ![Editing Python on the Cardputer](docs/screenshots/script-editor.png) | ![Remembered SSH connection settings](docs/screenshots/ssh-hosts.png) |
+| **Open a scanned port** | **Telnet terminal** |
+| ![SSH Telnet and raw TCP actions](docs/screenshots/port-actions.png) | ![Illustrative Telnet session](docs/screenshots/tcp-terminal.png) |
 
 ## Install
 
-**New in v2.2.0:** save raw Wi-Fi captures to SD for Wireshark and run MicroPython scripts directly on the Cardputer.
+**New in v2.3.0:** record Wi-Fi surveys, transfer SD files through a local browser page, edit Python on-device, save SSH hosts, and open SSH/Telnet/raw TCP sessions from port-scan results.
 
 Download **[portalis.bin from the latest release](https://github.com/ro8inmorgan/portalis/releases/latest)** and flash it at **`0x0`**. It is the complete image: bootloader, partition table, and application. Back up any existing firmware/settings first.
 
@@ -58,7 +68,7 @@ For Python, copy the [example scripts](sd-card/scripts) into `/scripts` on the S
 
 ## What you can do
 
-Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → IP range scan → Host port scan → SSH terminal → Packet capture → Python scripts → Settings**. Settings is last.
+Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → IP range scan → Host port scan → SSH terminal → Packet capture → Python scripts → Wi-Fi survey → File transfer → TCP terminal → Settings**. Settings is last.
 
 ### Portal
 
@@ -81,7 +91,7 @@ The scanner lists access points, not connected client devices. Scanning and port
 
 ### Join and remember Wi-Fi networks
 
-Diagnostics, Ping, IP range scan, Host port scan, and SSH need a network connection. Choose a visible network in the picker and enter its password; open networks connect directly. Successfully joined networks are saved automatically and marked with `*` in the picker. Selecting one reconnects with its stored password.
+Diagnostics, Ping, IP range scan, Host port scan, SSH, File transfer, and TCP terminal need a network connection. Choose a visible network in the picker and enter its password; open networks connect directly. Successfully joined networks are saved automatically and marked with `*` in the picker. Selecting one reconnects with its stored password.
 
 - Remembers up to **five networks**, with the oldest profile replaced when full.
 - Password entry is masked. Failed joins do not overwrite saved credentials.
@@ -373,3 +383,41 @@ uv run --with pillow python scripts/render_ui.py
 The preview tool compiles the real `drawUi()` function against a host drawing adapter and uses M5GFX's GLCD font. Shapes are rasterized with Pillow, so edge pixels may differ slightly from the hardware display.
 
 See [README.txt](README.txt) for further implementation details and limits.
+
+### Wi-Fi survey recorder
+
+Open **Wi-Fi survey** and press **Enter** to start or stop. Each completed scan saves the strongest 32 AP observations to `/surveys/survey-XXXXXXXX.csv`: elapsed milliseconds, sweep number, total APs seen, SSID, BSSID, channel, RSSI, and security. Failed and empty scans are recorded explicitly. Recording stops at 8 MiB. This uses nearby Wi-Fi scans without joining a network; timestamps are relative to recording start, with no GPS location.
+
+### Local file-transfer page
+
+Open **File transfer**, join Wi-Fi, and press **Enter**. On another device on the same reachable LAN, open the displayed HTTP address and sign in as **portalis** with the temporary code shown on the Cardputer.
+
+- Upload `.py` files to `/scripts` and `.html`/`.htm` templates to the SD root, up to **32 KiB** each. Replacing an existing file requires the checkbox.
+- Download scripts, root-level templates, `/captures/*.pcap`, and `/surveys/*.csv`; browse 64 files per page.
+- SSH keys, device configuration, and form submissions are outside this page's folders.
+- Transfers use temporary files and preserve a backup during replacement. If SD recovery fails, a `.bak` file remains for recovery on a computer.
+- Press **Enter** to stop; wait until stopped before removing SD. This service uses HTTP without TLS, so use a trusted LAN. The access code changes each time it starts.
+
+### On-device script editor
+
+In **Python scripts**, press **N** to create a file or **E** to edit the selected file. The editor supports ASCII scripts up to **8 KiB**; larger scripts can still be transferred separately. Tabs become four spaces and CRLF line endings are normalized when loaded.
+
+| Control | Action |
+| --- | --- |
+| Ctrl + arrow keys (`; . , /`) | Move cursor, scrolling as needed |
+| Enter / Tab | New line with existing indentation / four spaces |
+| Ctrl+S | Save to SD |
+| Ctrl+R | Save and run in the existing MicroPython runtime |
+| Esc | Exit; choose Save, Discard, or Keep editing when modified |
+
+### Saved SSH hosts and port actions
+
+SSH setup now includes **Saved hosts** and **Save host**. Up to eight profiles persist in NVS: hostname, port, username, authentication mode, and private-key path. Passwords and key passphrases are never saved in these profiles. Select a profile with **Enter**, or forget it with **D**. Host-key confirmation still happens for each connection.
+
+In **Host port scan**, select an open port and press **Enter** for **SSH**, **Telnet**, or **Raw TCP**. The scan stops before connecting and its results are retained. Port 22 selects SSH by default, port 23 selects Telnet, and other ports select raw TCP. SSH reuses a matching saved host profile when available.
+
+### Telnet and raw TCP terminal
+
+Open **TCP terminal** from the main menu, or use a port-scan result. Set the hostname/IP, port, and mode, then connect. Telnet performs basic option negotiation; raw TCP displays received text directly and locally echoes typed text. Neither mode provides TLS, UDP, or a binary packet viewer. Some services only respond after receiving a protocol-specific command.
+
+**Enter** sends CRLF; **Ctrl+letters** sends control characters, **Ctrl+arrows** sends terminal arrow sequences, **Fn+up/down** scrolls output, and **Fn+Del** disconnects. Output remains available after a remote disconnect. Telnet and SSH use the existing limited ANSI terminal renderer.

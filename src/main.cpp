@@ -11,6 +11,9 @@
 #include "ssh_terminal.h"
 #include "packet_capture.h"
 #include "python_runner.h"
+#include "sd_workbench.h"
+#include "tcp_terminal.h"
+#include "file_transfer.h"
 #include "wifi_profiles.h"
 #include "probe_test.h"
 
@@ -24,6 +27,16 @@ SshTerminal sshTerminal;
 PacketCapture packetCapture;
 PythonRunner pythonRunner;
 size_t pythonScroll=0;
+SurveyRecorder surveyRecorder;
+ScriptEditor scriptEditor;
+SshProfiles sshProfiles;
+FileTransfer fileTransfer;
+TcpTerminal tcpTerminal;
+TcpConfig tcpConfig;
+size_t tcpScroll=0;
+int tcpField=0,portReturnSelection=0;
+uint16_t actionPort=0;
+bool sshFromScan=false,tcpFromScan=false;
 uint8_t captureChannel=1;
 SshConfig sshConfig;
 int sshField=0;
@@ -50,6 +63,8 @@ int toolHomeIndex=ChannelsHome;
 bool channelOverlapView=false;
 bool isScanTool() { return toolHomeIndex==RangeScanHome || toolHomeIndex==PortScanHome; }
 Screen networkToolScreen() {
+    if (toolHomeIndex==TransferHome) return Screen::Transfer;
+    if (toolHomeIndex==TcpHome) return Screen::TcpSetup;
     if (toolHomeIndex==SshHome) return Screen::SshSetup;
     if (toolHomeIndex==RangeScanHome) return Screen::RangeSetup;
     if (toolHomeIndex==PortScanHome) return Screen::PortSetup;
@@ -189,13 +204,13 @@ void clearNetworkPassword() { std::fill(draft.begin(),draft.end(),'\0'); draft.c
 void stopWifiTool() {
     ledFeedback.signal(LedEvent::Leave,millis());
     pendingScanHost.clear(); lanScanner.cancel(); sshTerminal.stop(); eraseSecret(sshConfig.secret);
-    clearNetworkPassword(); clearPendingProfile(); scanner.stop(); networkTools.stop();
-    if (networkTools.busy() || lanScanner.busy() || sshTerminal.busy()) show(Screen::NetworkStopping);
+    clearNetworkPassword(); clearPendingProfile(); scanner.stop(); fileTransfer.stop();tcpTerminal.stop();networkTools.stop();
+    if (networkTools.busy() || lanScanner.busy() || sshTerminal.busy() || tcpTerminal.busy() || fileTransfer.busy()) show(Screen::NetworkStopping);
     else openHome(toolHomeIndex);
 }
 void openWifiTool(int index) {
-    toolHomeIndex=index;
-    if (portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy()) {
+    toolHomeIndex=index;sshFromScan=tcpFromScan=false;
+    if (portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy() || tcpTerminal.busy() || fileTransfer.busy()) {
         notice("Stop the active Wi-Fi mode first.",Screen::Home); return;
     }
     if (!scanner.start()) { notice("Could not start Wi-Fi scan.",Screen::Home); return; }
@@ -205,7 +220,7 @@ void openWifiTool(int index) {
 }
 void joinToolNetwork() {
     scanner.stop();
-    const bool started=networkTools.begin(networkChoice,draft,toolHomeIndex==PingHome,isScanTool() || toolHomeIndex==SshHome);
+    const bool started=networkTools.begin(networkChoice,draft,toolHomeIndex==PingHome,isScanTool() || toolHomeIndex==SshHome || toolHomeIndex==TransferHome || toolHomeIndex==TcpHome);
     clearPendingProfile();
     if (started) pendingProfile={networkChoice.rawSsid,draft};
     clearNetworkPassword();
@@ -237,8 +252,9 @@ void handleKey(char key) {
                     if (scanner.start()) show(Screen::Radar);
                     else notice("Stop the portal before scanning Wi-Fi.", Screen::Home);
                 } else if (selected == 2) { show(Screen::Probe); reloadProbeConfig(); }
+                else if (selected == SurveyHome) {toolHomeIndex=SurveyHome;show(Screen::Survey);}
                 else if (selected == PythonHome) {
-                    if(portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy() || packetCapture.busy()) {
+                    if(portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy() || tcpTerminal.busy() || fileTransfer.busy() || packetCapture.busy()) {
                         notice("Stop the active tool first.",Screen::Home);break;
                     }
                     scanner.stop();storage.begin();pythonRunner.refresh();show(Screen::PythonScripts);
@@ -248,13 +264,58 @@ void handleKey(char key) {
                 else openWifiTool(selected);
             }
             break;
+        case Screen::Survey:
+            if(escape || back) {surveyRecorder.stop();scanner.stop();openHome(SurveyHome);}
+            else if(enter) {
+                if(surveyRecorder.status().recording) {surveyRecorder.stop();scanner.stop();}
+                else if(!storage.begin()) notice("Insert an SD card.",Screen::Survey);
+                else if(!scanner.start()) notice("Stop the active Wi-Fi tool.",Screen::Survey);
+                else if(!surveyRecorder.start(millis(),scanner.snapshot().generation)) {scanner.stop();notice(surveyRecorder.status().message,Screen::Survey);}
+            }
+            break;
+        case Screen::Transfer:
+            if(escape || back) stopWifiTool();
+            else if(enter && networkTools.status().phase==NetworkPhase::Ready) {
+                if(fileTransfer.busy())fileTransfer.stop();
+                else if(!storage.begin() || !fileTransfer.start(networkTools.status().address))notice("Could not start file transfer. Check SD and Wi-Fi.",Screen::Transfer);
+            }
+            break;
         case Screen::PythonScripts:
             if(escape || back) openHome(PythonHome);
             else if(key=='r' || key=='R') {storage.begin();pythonRunner.refresh();selected=0;}
+            else if(key=='n' || key=='N') {draft="";show(Screen::EditorName);}
+            else if((key=='e' || key=='E') && selected>=0 && selected<static_cast<int>(pythonRunner.scripts().count)) {
+                if(loadEditor(scriptEditor,pythonRunner.scripts().names[selected],false))show(Screen::Editor);
+                else notice(scriptEditor.message,Screen::PythonScripts);
+            }
             else if(up && selected>0) --selected;
             else if(down && selected+1<static_cast<int>(pythonRunner.scripts().count)) ++selected;
             else if(enter && selected>=0 && selected<static_cast<int>(pythonRunner.scripts().count)) {
                 pythonRunner.start(pythonRunner.scripts().names[selected]);pythonScroll=0;show(Screen::PythonOutput);
+            }
+            break;
+        case Screen::EditorName:
+            if(escape)show(Screen::PythonScripts);
+            else if(back) {if(!draft.empty())draft.pop_back();}
+            else if(enter) {
+                std::string name=draft;if(name.size()<3 || name.substr(name.size()-3)!=".py")name+=".py";
+                if(loadEditor(scriptEditor,name,true))show(Screen::Editor);else notice(scriptEditor.message,Screen::EditorName);
+            } else if(key>=32 && key<127 && draft.size()<77)draft+=key;
+            break;
+        case Screen::Editor:
+            if(escape) {if(scriptEditor.dirty)show(Screen::EditorExit);else {pythonRunner.refresh();show(Screen::PythonScripts);}}
+            else if(enter)scriptEditor.newline();
+            else if(back)scriptEditor.backspace();
+            else if(key>=32 && key<127)scriptEditor.insert(std::string(1,key));
+            break;
+        case Screen::EditorExit:
+            if(escape)show(Screen::Editor);
+            else if(up)selected=(selected+2)%3;
+            else if(down)selected=(selected+1)%3;
+            else if(enter) {
+                if(selected==2)show(Screen::Editor);
+                else if(selected==1 || saveEditor(scriptEditor)) {pythonRunner.refresh();show(Screen::PythonScripts);}
+                else notice(scriptEditor.message,Screen::Editor);
             }
             break;
         case Screen::PythonOutput:
@@ -272,7 +333,7 @@ void handleKey(char key) {
                 captureChannel=1+(captureChannel-1+(key==',' ? 12 : 1))%13;
             else if (enter && selected==0) captureChannel=captureChannel%13+1;
             else if (enter) {
-                if(portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy()) {
+                if(portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy() || tcpTerminal.busy() || fileTransfer.busy()) {
                     notice("Stop the other Wi-Fi tool first.",Screen::CaptureSetup);break;
                 }
                 scanner.stop();
@@ -370,15 +431,23 @@ void handleKey(char key) {
             break;
         }
         case Screen::SshSetup:
-            if (escape || back) { stopWifiTool(); break; }
+            if (escape || back) {
+                if(sshFromScan) {eraseSecret(sshConfig.secret);if(sshTerminal.busy())sshTerminal.stop();else {show(Screen::PortResults);selected=portReturnSelection;}}
+                else stopWifiTool();break;
+            }
             if (networkTools.status().phase!=NetworkPhase::Ready || sshTerminal.busy()) break;
-            if (up) selected=(selected+6)%7;
-            if (down) selected=(selected+1)%7;
+            if (up) selected=(selected+8)%9;
+            if (down) selected=(selected+1)%9;
             if (enter) {
                 if (selected==3) {
                     sshConfig.auth=sshConfig.auth==SshAuth::Password ? SshAuth::PrivateKey : SshAuth::Password;
                     eraseSecret(sshConfig.secret);
-                } else if (selected==6) {
+                } else if(selected==6) show(Screen::SshHosts);
+                else if(selected==7) {
+                    const auto previous=sshProfiles.serialize();
+                    if(!sshProfiles.remember(sshConfig))notice("Set a valid SSH host and username first.",Screen::SshSetup);
+                    else {const auto json=sshProfiles.serialize();if(!wifiPreferencesReady || wifiPreferences.putString("ssh_hosts",json.c_str())!=json.size()) {sshProfiles.load(previous);notice("Could not save SSH host.",Screen::SshSetup);}else notice("SSH host saved. Passwords are not saved.",Screen::SshSetup);}
+                } else if (selected==8) {
                     if (!sshTerminal.start(sshConfig)) notice("Check SSH settings, Wi-Fi, and free memory.",Screen::SshSetup);
                     else { eraseSecret(sshConfig.secret);terminalScroll=0;show(Screen::SshSession); }
                 } else {
@@ -386,6 +455,16 @@ void handleKey(char key) {
                     draft=selected==0 ? sshConfig.host : selected==1 ? std::to_string(sshConfig.port) : selected==2 ? sshConfig.user : selected==4 ? sshConfig.secret : sshConfig.keyPath;
                     show(Screen::SshInput);
                 }
+            }
+            break;
+        case Screen::SshHosts:
+            if(escape || back)show(Screen::SshSetup);
+            else if(up && selected>0)--selected;
+            else if(down && selected+1<static_cast<int>(sshProfiles.count))++selected;
+            else if(enter && selected>=0 && selected<static_cast<int>(sshProfiles.count)) {eraseSecret(sshConfig.secret);sshConfig=sshProfiles.entries[selected];show(Screen::SshSetup);selected=8;}
+            else if((key=='d' || key=='D') && selected>=0 && selected<static_cast<int>(sshProfiles.count)) {
+                const auto previous=sshProfiles.serialize();sshProfiles.forget(selected);const auto json=sshProfiles.serialize();
+                if(!wifiPreferencesReady || wifiPreferences.putString("ssh_hosts",json.c_str())!=json.size()) {sshProfiles.load(previous);notice("Could not remove saved host.",Screen::SshHosts);}else selected=0;
             }
             break;
         case Screen::SshInput:
@@ -414,6 +493,39 @@ void handleKey(char key) {
                 sshTerminal.send(&input,1);terminalScroll=0;
             } else if(escape || back) { sshTerminal.stop();show(Screen::SshSetup); }
             break;
+        case Screen::PortActions:
+            if(escape || back) {show(Screen::PortResults);selected=portReturnSelection;}
+            else if(up)selected=(selected+2)%3;
+            else if(down)selected=(selected+1)%3;
+            else if(enter && !lanScanner.busy()) {
+                const std::string host=scanIpText(lanScanner.ports().host);
+                if(selected==0) {
+                    eraseSecret(sshConfig.secret);
+                    for(size_t i=0;i<sshProfiles.count;++i)if(sshProfiles.entries[i].host==host && sshProfiles.entries[i].port==actionPort) {sshConfig=sshProfiles.entries[i];break;}
+                    sshConfig.host=host;sshConfig.port=actionPort;sshFromScan=true;show(Screen::SshSetup);selected=8;
+                } else {tcpConfig.host=host;tcpConfig.port=actionPort;tcpConfig.telnet=selected==1;tcpFromScan=true;show(Screen::TcpSetup);selected=3;}
+            }
+            break;
+        case Screen::TcpSetup:
+            if(escape || back) {if(tcpFromScan) {if(tcpTerminal.busy())tcpTerminal.stop();else {show(Screen::PortResults);selected=portReturnSelection;}}else stopWifiTool();break;}
+            if(tcpTerminal.busy() || networkTools.status().phase!=NetworkPhase::Ready)break;
+            if(up)selected=(selected+3)%4;
+            if(down)selected=(selected+1)%4;
+            if(enter) {
+                if(selected==2)tcpConfig.telnet=!tcpConfig.telnet;
+                else if(selected==3) {if(tcpTerminal.start(tcpConfig)) {tcpScroll=0;show(Screen::TcpSession);}else notice("Check host, port, and Wi-Fi.",Screen::TcpSetup);}
+                else {tcpField=selected;draft=tcpField==0?tcpConfig.host:std::to_string(tcpConfig.port);show(Screen::TcpInput);}
+            }
+            break;
+        case Screen::TcpInput:
+            if(escape)show(Screen::TcpSetup);
+            else if(back) {if(!draft.empty())draft.pop_back();}
+            else if(enter) {uint16_t first,last;if(tcpField==1 && (!scanPorts(draft,first,last)||first!=last))notice("Port must be 1 to 65535.",Screen::TcpInput);else {if(tcpField==0)tcpConfig.host=draft;else tcpConfig.port=first;show(Screen::TcpSetup);selected=tcpField;}}
+            else if(key>=32 && key<127 && draft.size()<(tcpField==0?63U:5U))draft+=key;
+            break;
+        case Screen::TcpSession:
+            if(escape || back) {tcpTerminal.stop();show(Screen::TcpSetup);}
+            break;
         case Screen::ScanInput:
             if (escape) { draft.clear(); show(scanInputReturn); }
             else if (back) { if (!draft.empty()) draft.pop_back(); }
@@ -439,6 +551,10 @@ void handleKey(char key) {
             } else if (key=='s' || key=='S') lanScanner.cancel();
             else if (up && selected>0) --selected;
             else if (down && selected+1<count) ++selected;
+            else if(enter && !range && selected>=0 && selected<count) {
+                actionPort=lanScanner.ports().ports[selected];portReturnSelection=selected;lanScanner.cancel();
+                show(Screen::PortActions);selected=actionPort==22?0:actionPort==23?1:2;
+            }
             else if (enter && range && selected>=0 && selected<count) {
                 rangeSelection=selected;
                 pendingScanHost=scanIpText(lanScanner.range().hosts[selected].ip);
@@ -658,6 +774,31 @@ void pollKeyboard() {
     const auto before = previous;
     previous = current; oldEnter = keys.enter; oldDelete = keys.del;
     const bool tab=keys.tab && !oldTab; oldTab=keys.tab;
+    if(screen==Screen::Editor) {
+        if(keys.ctrl) {
+            if((current['s']&&!before['s']) || (current['S']&&!before['S'])) {saveEditor(scriptEditor);return;}
+            if((current['r']&&!before['r']) || (current['R']&&!before['R'])) {if(saveEditor(scriptEditor)) {pythonRunner.start(scriptEditor.name);pythonScroll=0;show(Screen::PythonOutput);}return;}
+            for(char ch:std::string(";.,/"))if(current[static_cast<unsigned char>(ch)]&&!before[static_cast<unsigned char>(ch)]) {scriptEditor.move(ch==','?-1:ch=='/'?1:0,ch==';'?-1:ch=='.'?1:0);return;}
+        }
+        if(tab) {scriptEditor.insert("    ");return;}
+    }
+    if(screen==Screen::TcpSession && keys.fn && ((current[';']&&!before[';']) || (current['.']&&!before['.']))) {
+        if(current[';'])tcpScroll=std::min(tcpScroll+1,tcpTerminal.terminal().historyCount());
+        else if(tcpScroll)--tcpScroll;
+        return;
+    }
+    if(screen==Screen::TcpSession && tcpTerminal.status().phase==TcpPhase::Active) {
+        if(keys.fn && del) {tcpTerminal.stop();show(Screen::TcpSetup);return;}
+        if(enter) {tcpTerminal.send("\r\n",2);tcpScroll=0;}
+        if(del)tcpTerminal.send("\b",1);
+        if(tab)tcpTerminal.send("\t",1);
+        for(size_t key=32;key<current.size();++key)if(current[key]&&!before[key]) {
+            if(keys.fn && (key==';'||key=='.')) {if(key==';')tcpScroll=std::min(tcpScroll+1,tcpTerminal.terminal().historyCount());else if(tcpScroll)--tcpScroll;continue;}
+            if(keys.ctrl && (key==';'||key=='.'||key==','||key=='/')) {const char* arrow=key==';'?"\x1b[A":key=='.'?"\x1b[B":key==','?"\x1b[D":"\x1b[C";tcpTerminal.send(arrow,3);}
+            else {char byte=key=='`'?'\x1b':keys.ctrl?char(key&31):char(key);tcpTerminal.send(&byte,1);}tcpScroll=0;
+        }
+        return;
+    }
     if(screen==Screen::PythonOutput) {
         if(keys.ctrl && ((current['c'] && !before['c']) || (current['C'] && !before['C']))) {pythonRunner.stop();return;}
         if(keys.fn && ((current[';'] && !before[';']) || (current['.'] && !before['.']))) {
@@ -701,6 +842,8 @@ void render() {
     view.carouselPosition = carousel.position(millis());
     view.radar = &scanner.snapshot();
     view.signal=&signalHistory; view.changes=&networkChanges; view.network=&networkTools.status();
+    view.survey=&surveyRecorder.status();view.transfer=&fileTransfer.status();view.editor=&scriptEditor;view.sshProfiles=&sshProfiles;
+    view.tcpConfig=&tcpConfig;view.tcpStatus=&tcpTerminal.status();view.tcpTerminal=&tcpTerminal.terminal();view.tcpScroll=tcpScroll;view.tcpInputLabel=tcpField==0?"Host / IPv4":"TCP port";view.actionPort=actionPort;
     view.scripts=&pythonRunner.scripts();view.python=&pythonRunner.status();view.pythonTerminal=&pythonRunner.terminal();view.pythonScroll=pythonScroll;
     view.capture=&packetCapture.status();view.captureChannel=captureChannel;
     view.sshConfig=&sshConfig;view.sshStatus=&sshTerminal.status();view.terminal=&sshTerminal.terminal();
@@ -794,7 +937,7 @@ void setup() {
     canvas.setBuffer(frameBuffer, 240, 135, 8);
     WiFi.mode(WIFI_OFF);
     wifiPreferencesReady=wifiPreferences.begin("portalis-net",false);
-    if (wifiPreferencesReady) wifiProfiles.load(wifiPreferences.getString("profiles", "").c_str());
+    if (wifiPreferencesReady) {wifiProfiles.load(wifiPreferences.getString("profiles", "").c_str());sshProfiles.load(wifiPreferences.getString("ssh_hosts", "").c_str());}
     preferencesReady = preferences.begin("portalis", false);
     if (preferencesReady) {
         const std::string saved = preferences.getString("ssid", "Portalis Demo").c_str();
@@ -859,10 +1002,12 @@ void loop() {
     const uint32_t sent=networkTools.status().ping.sent, received=networkTools.status().ping.received;
     networkTools.poll();
     const auto& currentNetwork=networkTools.status();
+    fileTransfer.poll();tcpTerminal.poll();
     pythonRunner.poll();
     packetCapture.poll();
     lanScanner.poll();
     sshTerminal.poll();
+    if(toolHomeIndex==TcpHome && networkPhase==NetworkPhase::Connecting && currentNetwork.phase==NetworkPhase::Ready && tcpConfig.host.empty())tcpConfig.host=currentNetwork.gateway;
     if(toolHomeIndex==SshHome && networkPhase==NetworkPhase::Connecting && currentNetwork.phase==NetworkPhase::Ready && sshConfig.host.empty())
         sshConfig.host=currentNetwork.gateway;
     if (isScanTool() && networkPhase==NetworkPhase::Connecting && currentNetwork.phase==NetworkPhase::Ready) {
@@ -899,11 +1044,12 @@ void loop() {
             if (!saved) notice("Joined, but could not save Wi-Fi profile.",networkToolScreen());
         } else if (connection.phase==NetworkPhase::Failed || connection.phase==NetworkPhase::Idle) clearPendingProfile();
     }
-    if (screen==Screen::NetworkStopping && !networkTools.busy() && !lanScanner.busy() && !sshTerminal.busy()) openHome(toolHomeIndex);
+    if (screen==Screen::NetworkStopping && !networkTools.busy() && !lanScanner.busy() && !sshTerminal.busy() && !tcpTerminal.busy() && !fileTransfer.busy()) openHome(toolHomeIndex);
     const auto& scan = scanner.snapshot();
     const uint64_t selectedId = selected >= 0 && selected < static_cast<int>(scan.count) ? scan.points[selected].id : 0;
     const uint32_t generation = scan.generation;
     scanner.poll();
+    if(surveyRecorder.status().recording) {surveyRecorder.observe(scanner.snapshot(),millis());if(!surveyRecorder.status().recording)scanner.stop();}
     if ((screen == Screen::Radar || screen == Screen::ScanList || screen == Screen::ToolNetworks) && scanner.snapshot().generation != generation)
         selected = radarSelection(scanner.snapshot(), selectedId);
     if (scanner.snapshot().generation!=generation) {

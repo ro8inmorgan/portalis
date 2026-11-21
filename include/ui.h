@@ -7,6 +7,7 @@
 #include "ssh_model.h"
 #include "packet_capture_model.h"
 #include "python_model.h"
+#include "workbench_model.h"
 #include "probe_model.h"
 #include "carousel.h"
 #include "settings.h"
@@ -14,7 +15,7 @@
 #include <M5GFX.h>
 
 namespace portalis {
-enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, RangeSetup, RangeResults, PortSetup, PortResults, ScanInput, SshSetup, SshInput, SshSession, CaptureSetup, CaptureLive, PythonScripts, PythonOutput, Error };
+enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, RangeSetup, RangeResults, PortSetup, PortResults, ScanInput, SshSetup, SshInput, SshSession, CaptureSetup, CaptureLive, PythonScripts, PythonOutput, Survey, Transfer, Editor, EditorName, EditorExit, SshHosts, PortActions, TcpSetup, TcpInput, TcpSession, Error };
 struct ViewModel {
     UiSettings settings;
     float carouselPosition = 0;
@@ -38,6 +39,16 @@ struct ViewModel {
     const char* scanPortRange = "1-1024";
     const char* scanInputLabel = "";
     bool scanBusy = false;
+    const SurveyStatus* survey = nullptr;
+    const TransferStatus* transfer = nullptr;
+    const ScriptEditor* editor = nullptr;
+    const SshProfiles* sshProfiles = nullptr;
+    const TcpConfig* tcpConfig = nullptr;
+    const TcpStatus* tcpStatus = nullptr;
+    const TerminalBuffer* tcpTerminal = nullptr;
+    size_t tcpScroll = 0;
+    const char* tcpInputLabel = "";
+    uint16_t actionPort = 0;
     const ScriptCatalog* scripts = nullptr;
     const PythonStatus* python = nullptr;
     const TerminalBuffer* pythonTerminal = nullptr;

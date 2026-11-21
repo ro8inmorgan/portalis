@@ -61,7 +61,7 @@ def package(source, target, env):
     shutil.copytree(root / "sd-card", dist / "sd-card", dirs_exist_ok=True)
     manifest = {"image": output.name, "flash_offset": "0x0", "size": len(merged),
                 "sha256": hashlib.sha256(merged).hexdigest(),
-                "target": "Cardputer / Cardputer ADV", "version": "2.2.0"}
+                "target": "Cardputer / Cardputer ADV", "version": "2.3.0"}
     (dist / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     shutil.copyfile(root / "README.txt", dist / "README.txt")
     examples = [(path, path.relative_to(root / "sd-card").as_posix())

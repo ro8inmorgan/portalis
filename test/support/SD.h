@@ -32,9 +32,10 @@ public:
 class FakeSD {
 public:
     bool present = true;
+    std::string rejectRenameTo;
     std::map<std::string, std::shared_ptr<Node>> nodes;
     FakeSD() { reset(); }
-    void reset() { nodes.clear(); present = true; nodes["/"] = std::make_shared<Node>(Node{"/", "", true, {}}); }
+    void reset() { nodes.clear(); present = true; rejectRenameTo.clear(); nodes["/"] = std::make_shared<Node>(Node{"/", "", true, {}}); }
     void seed(const std::string& path, const std::string& contents, bool dir = false) {
         auto node = std::make_shared<Node>(Node{path, contents, dir, {}});
         nodes[path] = node;
@@ -46,7 +47,15 @@ public:
     bool begin(int, FakeSPI&, int) { return present; } void end() {}
     int cardType() const { return present ? 1 : CARD_NONE; }
     bool exists(const char* path) const { return nodes.count(path); }
-    bool remove(const char* path) { return nodes.erase(path) != 0; }
+    bool remove(const char* path) {
+        auto found=nodes.find(path);if(found==nodes.end())return false;auto node=found->second;
+        for(auto& item:nodes) {auto& children=item.second->children;children.erase(std::remove(children.begin(),children.end(),node),children.end());}
+        nodes.erase(found);return true;
+    }
+    bool rename(const char* from,const char* to) {
+        if(!present || rejectRenameTo==to || !nodes.count(from) || nodes.count(to))return false;
+        auto node=nodes.at(from);nodes.erase(from);node->path=to;nodes[to]=node;return true;
+    }
     bool mkdir(const char* path) { seed(path, "", true); return true; }
     File open(const char* path, const char* mode = "r") {
         if (!present) return {};

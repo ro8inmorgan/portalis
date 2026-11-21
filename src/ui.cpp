@@ -141,7 +141,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::Home: {
             title(c, "PORTALIS");
-            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "IP range scan", "Host port scan", "SSH terminal", "Packet capture", "Python scripts", "Settings"};
+            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "IP range scan", "Host port scan", "SSH terminal", "Packet capture", "Python scripts", "Wi-Fi survey", "File transfer", "TCP terminal", "Settings"};
             c.setClipRect(0, 26, 240, 66);
             for (int icon = 0; icon < CarouselMotion::count; ++icon) {
                 float delta = icon - v.carouselPosition;
@@ -240,6 +240,18 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                     text(c,".py",cx-14,cy-12,FG,1.5f);
                     c.drawLine(cx-12,cy+6,cx-7,cy+10,ink);c.drawLine(cx-7,cy+10,cx-12,cy+14,ink);
                     if((v.now/500)%2==0) c.fillRect(cx,cy+12,12,2,FG);
+                } else if (icon == SurveyHome) {
+                    c.drawLine(cx-22,cy+19,cx+22,cy+19,ink);
+                    for(int i=0;i<5;++i) {int height=8+(i*7+v.now/450)%29;c.fillRect(cx-20+i*9,cy+17-height,5,height,ink);}
+                    c.fillCircle(cx+17,cy-19,3,FG);
+                } else if (icon == TransferHome) {
+                    c.fillRoundRect(cx-21,cy-18,42,36,4,ink);c.fillRect(cx-18,cy-12,36,27,fill);
+                    int shift=(v.now/250)%4;c.drawLine(cx-8,cy+10-shift,cx-8,cy-8-shift,FG);
+                    c.drawLine(cx-8,cy-8-shift,cx-13,cy-3-shift,FG);c.drawLine(cx-8,cy-8-shift,cx-3,cy-3-shift,FG);
+                    c.drawLine(cx+9,cy-9+shift,cx+9,cy+9+shift,ink);c.drawLine(cx+9,cy+9+shift,cx+4,cy+4+shift,ink);c.drawLine(cx+9,cy+9+shift,cx+14,cy+4+shift,ink);
+                } else if (icon == TcpHome) {
+                    c.drawCircle(cx-15,cy,7,ink);c.drawCircle(cx+15,cy,7,ink);c.drawLine(cx-8,cy,cx+8,cy,FG);
+                    c.fillCircle(cx-7+(v.now/90)%15,cy,2,FG);text(c,"TCP",cx-9,cy+13,ink,1);
                 } else if (icon == SettingsHome) {
                     const float rotation=(v.now%12000)*(6.28318530718f/12000.0f);
                     auto gear=[&](int x,int y,int root,int tip,int teeth,float angle) {
@@ -356,6 +368,66 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             title(c,"PING TARGET"); text(c,"IPv4 address:",6,33,MUTED,1.5f);
             text(c,v.draft,6,56,ACCENT,2);
             footer(c,"Enter Apply Esc Cancel"); break;
+        case Screen::Survey: {
+            title(c,"WI-FI SURVEY");const auto& state=v.survey?*v.survey:emptyView<SurveyStatus>();
+            text(c,state.recording?"Recording...":state.failed?"Survey error":"CSV survey recorder",6,29,state.failed?GOLD:FG,1.5f);
+            text(c,"Sweeps "+countLabel(state.sweeps)+" Rows "+countLabel(state.rows),6,49,FG,1.5f);
+            text(c,elapsedLabel(state.seconds)+"  Failed "+countLabel(state.missed),6,69,MUTED,1.5f);
+            ticker(c,state.path,6,90,228,elapsed,ACCENT,1);ticker(c,state.message,6,104,228,elapsed,MUTED,1);
+            footer(c,state.recording?"ENT Save & stop Esc Exit":"ENT Start Esc Back");break;
+        }
+        case Screen::Transfer: {
+            title(c,"FILE TRANSFER");const auto& state=v.transfer?*v.transfer:emptyView<TransferStatus>();
+            const auto& net=v.network?*v.network:emptyView<NetworkStatus>();
+            if(state.running) {
+                ticker(c,"http://"+std::string(state.address),6,29,228,elapsed,ACCENT,1.5f);
+                text(c,"User: portalis",6,49,FG,1.5f);text(c,"Code:",6,69,MUTED,1);
+                text(c,state.code,6,81,FG,1.5f);text(c,"Up "+countLabel(state.uploads)+"  Down "+countLabel(state.downloads),6,102,MUTED,1);
+            } else if(net.phase==NetworkPhase::Connecting)text(c,"Joining Wi-Fi...",6,40,FG,1.5f);
+            else if(net.phase!=NetworkPhase::Ready)wrapped(c,*net.message?net.message:"Connect to Wi-Fi first",32,3);
+            else {wrapped(c,"Transfer scripts, HTML, captures and surveys",32,3);ticker(c,state.message,6,101,228,elapsed,MUTED,1);}
+            footer(c,state.stopping?"Finishing transfers...":state.running?"ENT Stop Esc Disconnect":"ENT Start Esc Back");break;
+        }
+        case Screen::EditorName:
+            title(c,"NEW SCRIPT");text(c,"Filename (.py):",6,32,MUTED,1.5f);ticker(c,v.draft,6,58,228,elapsed,ACCENT,1.5f);footer(c,"Enter Create Esc Cancel");break;
+        case Screen::Editor: {
+            const auto& editor=v.editor?*v.editor:emptyView<ScriptEditor>();
+            text(c,std::string(editor.dirty?"* ":"  ")+shorten(editor.name,35),0,0,ACCENT,1);c.drawFastHLine(0,11,240,PANEL);
+            for(int row=0;row<12;++row)text(c,editor.visible(row),0,16+row*8,FG,1);
+            if((v.now/500)%2==0)c.drawFastHLine((editor.column()-editor.left)*6,16+(editor.row()-editor.top)*8+7,6,ACCENT);
+            ticker(c,editor.message.empty()?"Line "+std::to_string(editor.row()+1)+" Col "+std::to_string(editor.column()+1):editor.message,0,114,240,elapsed,MUTED,1);
+            text(c,"Ctrl+arrows Move Ctrl+S Save Ctrl+R Run",0,126,MUTED,1);break;
+        }
+        case Screen::EditorExit:
+            title(c,"UNSAVED");selectedRow(c,"Save and exit",0,v.selected==0,elapsed);selectedRow(c,"Discard edits",1,v.selected==1,elapsed);selectedRow(c,"Keep editing",2,v.selected==2,elapsed);footer(c,";/. Move Enter Select");break;
+        case Screen::SshHosts: {
+            title(c,"SAVED SSH");const auto& hosts=v.sshProfiles?*v.sshProfiles:emptyView<SshProfiles>();
+            if(!hosts.count)wrapped(c,"Use Save host in SSH setup first",32,3);
+            int first=std::max(0,v.selected-3);for(int row=0;row<4 && first+row<static_cast<int>(hosts.count);++row) {const auto& host=hosts.entries[first+row];selectedRow(c,host.user+"@"+host.host+":"+std::to_string(host.port),row,first+row==v.selected,elapsed);}
+            footer(c,"ENT Load D Forget Esc");break;
+        }
+        case Screen::PortActions:
+            title(c,("PORT "+std::to_string(v.actionPort)).c_str());
+            ticker(c,v.scanBusy?"Stopping scan...":v.portScan?scanIpText(v.portScan->host):"",6,28,228,elapsed,MUTED,1.5f);
+            selectedRow(c,"SSH",1,v.selected==0,elapsed);selectedRow(c,"Telnet",2,v.selected==1,elapsed);selectedRow(c,"Raw TCP",3,v.selected==2,elapsed);footer(c,"ENT Setup Esc Results");break;
+        case Screen::TcpSetup: {
+            title(c,"TCP TERMINAL");const auto& cfg=v.tcpConfig?*v.tcpConfig:emptyView<TcpConfig>();
+            const auto& net=v.network?*v.network:emptyView<NetworkStatus>();
+            if(net.phase!=NetworkPhase::Ready)wrapped(c,net.phase==NetworkPhase::Connecting?"Joining Wi-Fi...":*net.message?net.message:"Connect to Wi-Fi first",32,3);
+            else if(v.tcpStatus && v.tcpStatus->phase==TcpPhase::Stopping)text(c,"Closing connection...",6,42,MUTED,1.5f);
+            else {selectedRow(c,"Host: "+cfg.host,0,v.selected==0,elapsed);selectedRow(c,"Port: "+std::to_string(cfg.port),1,v.selected==1,elapsed);selectedRow(c,cfg.telnet?"Mode: Telnet":"Mode: Raw TCP",2,v.selected==2,elapsed);selectedRow(c,"Connect",3,v.selected==3,elapsed);}
+            footer(c,";/. Move ENT Select Esc");break;
+        }
+        case Screen::TcpInput:
+            title(c,"TCP SETTING");text(c,v.tcpInputLabel,6,32,MUTED,1.5f);ticker(c,v.draft,6,58,228,elapsed,ACCENT,1.5f);footer(c,"Enter Apply Esc Cancel");break;
+        case Screen::TcpSession: {
+            const auto& state=v.tcpStatus?*v.tcpStatus:emptyView<TcpStatus>();
+            const char* label=state.phase==TcpPhase::Active?"CONNECTED":state.phase==TcpPhase::Connecting?"CONNECTING":state.phase==TcpPhase::Stopping?"STOPPING":state.phase==TcpPhase::Failed?"FAILED":"CLOSED";
+            text(c,std::string("TCP / ")+label,0,0,ACCENT,1);c.drawFastHLine(0,10,240,PANEL);
+            if(v.tcpTerminal)for(int row=0;row<TerminalBuffer::rows;++row)text(c,v.tcpTerminal->line(row,v.tcpScroll),0,12+row*8,FG,1);
+            if(state.phase==TcpPhase::Failed)wrapped(c,state.message,32,3);
+            text(c,state.phase==TcpPhase::Active?"Fn+Del Exit Ctrl+arrows Fn+up/dn Scroll":"Esc Back  Fn+up/dn Scroll",0,126,MUTED,1);break;
+        }
         case Screen::PythonScripts: {
             title(c,"PYTHON");
             const auto& scripts=v.scripts ? *v.scripts : emptyView<ScriptCatalog>();
@@ -365,7 +437,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 for(int row=0;row<4 && first+row<static_cast<int>(scripts.count);++row)
                     selectedRow(c,scripts.names[first+row],row,first+row==v.selected,elapsed);
             }
-            footer(c,scripts.limited ? "First 64 | ENT Run R Scan" : ";/. File ENT Run R Scan");break;
+            footer(c,scripts.limited ? "64 max E Edit N New ENT" : "E Edit N New ENT Run");break;
         }
         case Screen::PythonOutput: {
             const auto& state=v.python ? *v.python : emptyView<PythonStatus>();
@@ -409,12 +481,12 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             } else if(net.phase!=NetworkPhase::Ready) wrapped(c,*net.message ? net.message : "Connect to Wi-Fi first",32,3);
             else if(phase==SshPhase::Stopping) text(c,"Closing SSH session...",6,50,MUTED,1.5f);
             else {
-                const std::array<std::string,7> labels{{"Host: "+config.host,"Port: "+std::to_string(config.port),
+                const std::array<std::string,9> labels{{"Host: "+config.host,"Port: "+std::to_string(config.port),
                     "User: "+config.user,config.auth==SshAuth::Password ? "Auth: password" : "Auth: private key",
                     std::string(config.auth==SshAuth::Password ? "Password: " : "Passphrase: ")+(config.secret.empty()?"not set":"********"),
-                    "Key: "+config.keyPath,"Connect"}};
+                    "Key: "+config.keyPath,"Saved hosts","Save host","Connect"}};
                 const int first=std::max(0,v.selected-3);
-                for(int row=0;row<4 && first+row<7;++row) selectedRow(c,labels[first+row],row,first+row==v.selected,elapsed);
+                for(int row=0;row<4 && first+row<9;++row) selectedRow(c,labels[first+row],row,first+row==v.selected,elapsed);
             }
             footer(c,";/. Move ENT Select Esc");break;
         }
@@ -496,7 +568,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 }
             }
             if (progress.found>count) text(c,"First 256 results shown",6,110,MUTED,1);
-            footer(c,range ? ";/. Host ENT Ports S Stop" : ";/. Ports S Stop Esc Back"); break;
+            footer(c,range ? ";/. Host ENT Ports S Stop" : ";/. Port ENT Open S Stop"); break;
         }
         case Screen::NetworkStopping:
             title(c,"DISCONNECT"); text(c,"Finishing checks...",6,43,FG,1.5f);
@@ -760,6 +832,6 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         case Screen::Error:
             title(c, "NOTICE"); wrapped(c, v.error, 29, 4, GOLD); footer(c, "Enter / Esc Back"); break;
     }
-    if (v.screen != Screen::Splash && v.screen != Screen::PythonOutput && !(v.screen==Screen::SshSession && v.sshStatus && v.sshStatus->phase==SshPhase::Active)) battery(c, v.batteryPercent);
+    if (v.screen != Screen::Splash && v.screen != Screen::PythonOutput && v.screen != Screen::Editor && v.screen != Screen::TcpSession && !(v.screen==Screen::SshSession && v.sshStatus && v.sshStatus->phase==SshPhase::Active)) battery(c, v.batteryPercent);
 }
 } // namespace portalis

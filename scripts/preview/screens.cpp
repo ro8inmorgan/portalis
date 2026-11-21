@@ -77,6 +77,16 @@ int main() {
     TerminalBuffer pythonTerminal;const std::string pythonOutput="Hello from MicroPython!\r\nSquares: [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]\r\nSquare root of 81: 9.0\r\nPython heap free: 48720 bytes\r\n";
     pythonTerminal.feed(pythonOutput.data(),pythonOutput.size());view.python=&python;view.pythonTerminal=&pythonTerminal;
     save("python-output",Screen::PythonOutput);
+    SurveyStatus survey;survey.recording=true;survey.sweeps=24;survey.rows=96;survey.seconds=125;
+    std::strcpy(survey.path,"/surveys/survey-01234567.csv");view.survey=&survey;view.selected=0;save("survey",Screen::Survey);
+    TransferStatus transfer;transfer.running=true;transfer.uploads=2;transfer.downloads=3;
+    std::strcpy(transfer.address,"192.168.1.42");std::strcpy(transfer.code,"a1b2c3d4e5f60718");view.transfer=&transfer;save("file-transfer",Screen::Transfer);
+    ScriptEditor editor;editor.reset("hello.py","# Hello from Cardputer\nfor i in range(5):\n    print('Count:', i)\n");editor.cursor=editor.text.size();editor.reveal();view.editor=&editor;save("script-editor",Screen::Editor);
+    SshProfiles profiles;profiles.count=2;profiles.entries[0]=ssh;profiles.entries[1]=ssh;profiles.entries[1].host="192.168.1.20";view.sshProfiles=&profiles;save("ssh-hosts",Screen::SshHosts);
+    view.actionPort=22;save("port-actions",Screen::PortActions);
+    TcpConfig tcp;tcp.host="192.168.1.10";tcp.port=23;TcpStatus tcpStatus;tcpStatus.phase=TcpPhase::Active;
+    TerminalBuffer tcpOutput;const std::string banner="Demo Telnet server\r\nlogin: robin\r\nWelcome to the lab\r\n$ ";tcpOutput.feed(banner.data(),banner.size());
+    view.tcpConfig=&tcp;view.tcpStatus=&tcpStatus;view.tcpTerminal=&tcpOutput;save("tcp-terminal",Screen::TcpSession);
     for(const auto& icon: {std::pair<int,const char*>{PortScanHome,"port-scan-icon"},{SettingsHome,"settings-icon"},{SshHome,"ssh-icon"},{CaptureHome,"capture-icon"},{PythonHome,"python-icon"}}) {
         view.selected=icon.first;view.carouselPosition=icon.first;save(icon.second,Screen::Home);
     }
