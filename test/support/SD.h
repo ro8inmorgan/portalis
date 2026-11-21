@@ -52,9 +52,20 @@ public:
         for(auto& item:nodes) {auto& children=item.second->children;children.erase(std::remove(children.begin(),children.end(),node),children.end());}
         nodes.erase(found);return true;
     }
+    bool rmdir(const char* path) {
+        auto it=nodes.find(path);if(it==nodes.end() || !it->second->directory || !it->second->children.empty() || std::string(path)=="/")return false;
+        return remove(path);
+    }
     bool rename(const char* from,const char* to) {
         if(!present || rejectRenameTo==to || !nodes.count(from) || nodes.count(to))return false;
-        auto node=nodes.at(from);nodes.erase(from);node->path=to;nodes[to]=node;return true;
+        std::string old=from,target=to;auto node=nodes.at(old);
+        auto parent=[](const std::string& p){auto slash=p.find_last_of('/');return slash==0?std::string("/"):p.substr(0,slash);};
+        if(!nodes.count(parent(target)))return false;
+        auto& siblings=nodes.at(parent(old))->children;siblings.erase(std::remove(siblings.begin(),siblings.end(),node),siblings.end());
+        nodes.at(parent(target))->children.push_back(node);
+        std::vector<std::pair<std::string,std::shared_ptr<Node>>> moved;
+        for(auto it=nodes.begin();it!=nodes.end();) {if(it->first==old || it->first.find(old+"/")==0) {moved.push_back({target+it->first.substr(old.size()),it->second});it=nodes.erase(it);}else ++it;}
+        for(auto& item:moved) {item.second->path=item.first;nodes[item.first]=item.second;}return true;
     }
     bool mkdir(const char* path) { seed(path, "", true); return true; }
     File open(const char* path, const char* mode = "r") {

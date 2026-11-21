@@ -54,35 +54,58 @@ void test_tcp_transport_output_input_partial_write_and_close() {
     fakeTaskTick=nullptr;fakeTcpSuccess=false;TEST_ASSERT_TRUE(terminal.start(config));runFakeTask();terminal.poll();TEST_ASSERT_EQUAL(TcpPhase::Failed,terminal.status().phase);
 }
 void upload(const char* name,const char* text,bool token=true,bool replace=false) {
-    auto& server=*fakeServer;server.args["group"]="scripts";server.args["replace"]=replace?"1":"0";server.headers["X-Portalis-Token"]=token?server.password:String("wrong");
+    auto& server=*fakeServer;server.args["path"]="/scripts";server.args["replace"]=replace?"1":"0";server.headers["X-Portalis-Token"]=token?server.password:String("wrong");
     server.part.filename=name;server.part.status=UPLOAD_FILE_START;server.routes["/upload"].upload();
     server.part.status=UPLOAD_FILE_WRITE;server.part.currentSize=std::strlen(text);std::memcpy(server.part.buf,text,server.part.currentSize);server.routes["/upload"].upload();
     server.part.status=UPLOAD_FILE_END;server.routes["/upload"].upload();server.routes["/upload"].handler();
 }
 void test_transfer_auth_paths_upload_and_overwrite() {
-    WiFi.currentMode=WIFI_STA;WiFi.connectionStatus=WL_CONNECTED;FileTransfer transfer;TEST_ASSERT_TRUE(transfer.start("192.168.1.42"));auto& server=*fakeServer;
+    WiFi.currentMode=WIFI_STA;WiFi.connectionStatus=WL_CONNECTED;FileTransfer transfer;SD.mkdir("/scripts");TEST_ASSERT_TRUE(transfer.start("192.168.1.42"));auto& server=*fakeServer;
     TEST_ASSERT_EQUAL(5,std::strlen(transfer.status().code));
     TEST_ASSERT_EQUAL(5,std::strspn(transfer.status().code,"23456789ABCDEFGHJKLMNPQRSTUVWXYZ"));
     server.routes["/"].handler();TEST_ASSERT_EQUAL(401,server.code);
     server.user="portalis";server.password=transfer.status().code;server.routes["/"].handler();TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_EQUAL(std::string::npos,server.response.find("@@TOKEN@@"));
     upload("test.py","print(1)");TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_EQUAL_STRING("print(1)",SD.nodes.at("/scripts/test.py")->content.c_str());
-    upload("test.py","print(2)",true,false);TEST_ASSERT_EQUAL(400,server.code);TEST_ASSERT_EQUAL_STRING("print(1)",SD.nodes.at("/scripts/test.py")->content.c_str());
+    upload("test.py","print(2)",true,false);TEST_ASSERT_EQUAL(409,server.code);TEST_ASSERT_EQUAL_STRING("print(1)",SD.nodes.at("/scripts/test.py")->content.c_str());
     upload("test.py","print(2)",true,true);TEST_ASSERT_EQUAL(200,server.code);
     upload("bad.py","bad",false);TEST_ASSERT_FALSE(SD.exists("/scripts/bad.py"));
     upload("../escape.py","bad");TEST_ASSERT_EQUAL(400,server.code);TEST_ASSERT_FALSE(SD.exists("/escape.py"));
     fakeWriteLimit=1;upload("test.py","replacement",true,true);fakeWriteLimit=static_cast<size_t>(-1);
     TEST_ASSERT_EQUAL(400,server.code);TEST_ASSERT_EQUAL_STRING("print(2)",SD.nodes.at("/scripts/test.py")->content.c_str());TEST_ASSERT_FALSE(SD.exists("/scripts/test.py.upload"));
-    server.args["group"]="scripts";server.headers["X-Portalis-Token"]=server.password;
+    server.args["path"]="/scripts";server.headers["X-Portalis-Token"]=server.password;
     server.part.filename="large.py";server.part.status=UPLOAD_FILE_START;server.routes["/upload"].upload();
     server.part.status=UPLOAD_FILE_WRITE;server.part.currentSize=2048;std::memset(server.part.buf,'x',2048);
-    for(int i=0;i<17;++i)server.routes["/upload"].upload();
+    for(size_t i=0;i<=kTransferUploadLimit/2048;++i)server.routes["/upload"].upload();
     server.part.status=UPLOAD_FILE_END;server.routes["/upload"].upload();server.routes["/upload"].handler();
     TEST_ASSERT_EQUAL(400,server.code);TEST_ASSERT_FALSE(SD.exists("/scripts/large.py"));TEST_ASSERT_FALSE(SD.exists("/scripts/large.py.upload"));
     server.part.filename="abort.py";server.part.status=UPLOAD_FILE_START;server.routes["/upload"].upload();
     server.part.status=UPLOAD_FILE_ABORTED;server.routes["/upload"].upload();TEST_ASSERT_FALSE(SD.exists("/scripts/abort.py.upload"));
-    server.args["group"]="scripts";server.args["offset"]="0";server.routes["/list"].handler();TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_NOT_EQUAL(std::string::npos,server.response.find("test.py"));
-    server.args["name"]="test.py";fakeTcpConnected=true;server.routes["/download"].handler();TEST_ASSERT_EQUAL_STRING("print(2)",fakeTcpWritten.c_str());
-    server.args["group"]="ssh";server.args["name"]="id_ed25519";server.routes["/download"].handler();TEST_ASSERT_EQUAL(400,server.code);
+    server.args["path"]="/scripts";server.args["offset"]="0";server.routes["/list"].handler();TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_NOT_EQUAL(std::string::npos,server.response.find("test.py"));
+    server.args["path"]="/scripts/test.py";fakeTcpConnected=true;server.routes["/download"].handler();TEST_ASSERT_EQUAL_STRING("print(2)",fakeTcpWritten.c_str());
+    server.args["path"]="/../ssh/id_ed25519";server.routes["/download"].handler();TEST_ASSERT_EQUAL(400,server.code);
     transfer.stop();runFakeTask();transfer.poll();TEST_ASSERT_FALSE(transfer.busy());
 }
-int main() {UNITY_BEGIN();RUN_TEST(test_editor_navigation_indent_and_safe_save);RUN_TEST(test_editor_long_lines_and_normalization);RUN_TEST(test_survey_csv_generations_failure_and_stop);RUN_TEST(test_ssh_profiles_never_persist_secrets);RUN_TEST(test_telnet_fragmented_negotiation_and_raw_data);RUN_TEST(test_tcp_transport_output_input_partial_write_and_close);RUN_TEST(test_transfer_auth_paths_upload_and_overwrite);return UNITY_END();}
+void test_explorer_navigation_mutations_and_path_guards() {
+    WiFi.currentMode=WIFI_STA;WiFi.connectionStatus=WL_CONNECTED;FileTransfer transfer;TEST_ASSERT_TRUE(transfer.start("192.168.1.42"));auto& server=*fakeServer;
+    server.user="portalis";server.password=transfer.status().code;server.headers["X-Portalis-Token"]=server.password;
+    auto action=[&](const char* route,const char* path){server.args["path"]=path;server.routes[route].handler();};
+    action("/mkdir","/data");TEST_ASSERT_EQUAL(200,server.code);
+    action("/mkdir","/data/sub");TEST_ASSERT_EQUAL(200,server.code);
+    action("/create","/data/sub/new.txt");TEST_ASSERT_EQUAL(200,server.code);
+    action("/create","/data/sub/new.txt");TEST_ASSERT_EQUAL(409,server.code);
+    SD.seed("/data/sub/binary.bin",std::string("a\0b",3));
+    server.args["name"]="renamed";action("/rename","/data/sub");TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_TRUE(SD.exists("/data/renamed/new.txt"));
+    action("/list","/data");TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_NOT_EQUAL(std::string::npos,server.response.find("renamed"));TEST_ASSERT_NOT_EQUAL(std::string::npos,server.response.find("true"));
+    fakeTcpConnected=true;action("/download","/data/renamed/binary.bin");TEST_ASSERT_EQUAL(3,fakeTcpWritten.size());TEST_ASSERT_EQUAL(0,fakeTcpWritten[1]);
+    for(const char* bad:{"/","/../bad","/data/../bad","/data//bad","/data/","relative","/data/bad?"}) {action("/create",bad);TEST_ASSERT_EQUAL(400,server.code);}
+    server.headers["X-Portalis-Token"]="wrong";action("/delete","/data");TEST_ASSERT_EQUAL(403,server.code);TEST_ASSERT_TRUE(SD.exists("/data"));
+    server.headers["X-Portalis-Token"]=server.password;action("/delete","/data");TEST_ASSERT_EQUAL(400,server.code);
+    server.args["confirm"]="yes";action("/delete","/");TEST_ASSERT_EQUAL(400,server.code);
+    action("/delete","/data");TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_FALSE(SD.exists("/data/renamed/binary.bin"));TEST_ASSERT_FALSE(SD.exists("/data"));
+    for(int i=0;i<65;++i)SD.seed("/file"+std::to_string(i),"");
+    server.args["offset"]="0";action("/list","/");TEST_ASSERT_NOT_EQUAL(std::string::npos,server.response.find("\"more\":true"));
+    server.args["offset"]="64";action("/list","/");TEST_ASSERT_NOT_EQUAL(std::string::npos,server.response.find("\"more\":false"));
+    action("/list","/missing");TEST_ASSERT_EQUAL(404,server.code);
+    transfer.stop();runFakeTask();transfer.poll();
+}
+int main() {UNITY_BEGIN();RUN_TEST(test_explorer_navigation_mutations_and_path_guards);RUN_TEST(test_editor_navigation_indent_and_safe_save);RUN_TEST(test_editor_long_lines_and_normalization);RUN_TEST(test_survey_csv_generations_failure_and_stop);RUN_TEST(test_ssh_profiles_never_persist_secrets);RUN_TEST(test_telnet_fragmented_negotiation_and_raw_data);RUN_TEST(test_tcp_transport_output_input_partial_write_and_close);RUN_TEST(test_transfer_auth_paths_upload_and_overwrite);return UNITY_END();}

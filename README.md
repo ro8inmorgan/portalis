@@ -50,7 +50,7 @@ Rendered from the firmware UI using sample data at the display's 240×135 resolu
 
 ## Install
 
-**New in v2.3.0:** record Wi-Fi surveys, transfer SD files through a local browser page, edit Python on-device, save SSH hosts, and open SSH/Telnet/raw TCP sessions from port-scan results.
+**New in v2.4.0:** browse the entire SD card from your browser, upload/download any file type, create files and folders, rename items, and delete folder trees with confirmation.
 
 Download **[portalis.bin from the latest release](https://github.com/ro8inmorgan/portalis/releases/latest)** and flash it at **`0x0`**. It is the complete image: bootloader, partition table, and application. Back up any existing firmware/settings first.
 
@@ -394,9 +394,11 @@ Open **Wi-Fi survey** and press **Enter** to start or stop. Each completed scan 
 
 Open **File transfer**, join Wi-Fi, and press **Enter**. On another device on the same reachable LAN, open the displayed HTTP address and sign in as **portalis** with the temporary five-character code shown on the Cardputer.
 
-- Upload `.py` files to `/scripts` and `.html`/`.htm` templates to the SD root, up to **32 KiB** each. Replacing an existing file requires the checkbox.
-- Download scripts, root-level templates, `/captures/*.pcap`, and `/surveys/*.csv`; browse 64 files per page.
-- SSH keys, device configuration, and form submissions are outside this page's folders.
+- Browse the entire SD card with clickable folders, breadcrumbs, Up, and quick-access folders. Directories appear first within each 64-item page.
+- Upload any file type into the current folder, using the file picker or drag-and-drop, up to **32 MiB per file**. Multiple files upload sequentially with progress; overwriting requires confirmation.
+- Download files, create empty files and folders, and rename files or folders.
+- Delete files or entire folder trees after confirmation. Deletion is permanent; interrupted deletion can leave a partially deleted folder. Recursive deletion supports up to 16 nested levels.
+- The explorer includes configuration, submissions, and SSH key files on SD. Paths must fit within 240 UTF-8 bytes and use valid FAT filenames. It does not expose NVS settings.
 - Transfers use temporary files and preserve a backup during replacement. If SD recovery fails, a `.bak` file remains for recovery on a computer.
 - Press **Enter** to stop; wait until stopped before removing SD. This service uses HTTP without TLS, so use a trusted LAN. The access code changes each time it starts.
 
