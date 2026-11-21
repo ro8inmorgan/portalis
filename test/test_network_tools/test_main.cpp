@@ -54,4 +54,12 @@ void test_disconnect_is_reported_and_worker_failure_completes() {
     WiFi.connectionStatus=WL_DISCONNECTED;tools.poll();
     TEST_ASSERT_EQUAL(NetworkPhase::Failed,tools.status().phase);finish(tools);
 }
-int main() { UNITY_BEGIN();RUN_TEST(test_connection_timeout_and_ap_ownership);RUN_TEST(test_ping_pause_replace_and_stop_wait_for_end);RUN_TEST(test_diagnostics_independent_results_and_cancel_worker);RUN_TEST(test_disconnect_is_reported_and_worker_failure_completes);return UNITY_END(); }
+void test_scan_connection_skips_internet_checks() {
+    NetworkTools tools;
+    TEST_ASSERT_TRUE(tools.begin(network(),"testpassword",false,true)); joined(tools);
+    TEST_ASSERT_EQUAL(NetworkPhase::Ready,tools.status().phase);
+    TEST_ASSERT_NULL(fakeTask); TEST_ASSERT_TRUE(fakePings.empty());
+    tools.refresh(); TEST_ASSERT_NULL(fakeTask); TEST_ASSERT_TRUE(fakePings.empty());
+    finish(tools);
+}
+int main() { UNITY_BEGIN();RUN_TEST(test_scan_connection_skips_internet_checks);RUN_TEST(test_connection_timeout_and_ap_ownership);RUN_TEST(test_ping_pause_replace_and_stop_wait_for_end);RUN_TEST(test_diagnostics_independent_results_and_cancel_worker);RUN_TEST(test_disconnect_is_reported_and_worker_failure_completes);return UNITY_END(); }

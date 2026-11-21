@@ -12,6 +12,7 @@ class NetworkTools {
     QueueHandle_t events_=nullptr;
     esp_ping_handle_t ping_=nullptr;
     bool pingStopping_=false, pendingContinuous_=false;
+    bool connectionOnly_=false;
     std::string pendingTarget_;
     std::atomic<bool> workerRunning_{false}, cancel_{false};
     NetworkStatus status_;
@@ -25,7 +26,7 @@ class NetworkTools {
     void startChecks();
     void finishStop();
 public:
-    bool begin(const RadarAccessPoint&, const std::string& password, bool pingMode);
+    bool begin(const RadarAccessPoint&, const std::string& password, bool pingMode, bool connectionOnly=false);
     void poll();
     void stop();
     bool busy() const { return status_.phase!=NetworkPhase::Idle; }

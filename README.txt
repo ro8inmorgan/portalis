@@ -1,4 +1,4 @@
-PORTALIS 2.0.1 — Cardputer / Cardputer ADV
+PORTALIS 2.1.0 — Cardputer / Cardputer ADV
 
 A standalone local Wi-Fi connection demo with a readable 240x135 interface.
 No internet uplink is required. Nothing starts broadcasting until you choose Start.
@@ -280,3 +280,41 @@ INTERACTIVE LED FEEDBACK (2.0.1)
   failures, and disconnects use the disconnect color. Joins flash the connection
   color. Portal confirmation flashes have priority over navigation pulses.
   LED brightness and colors remain configurable; Off/0% disables all effects.
+
+IP RANGE SCAN AND HOST PORT SCAN
+  Both tools have their own main-menu icon and reuse the Wi-Fi network picker
+  and saved profiles. Joining does not start a scan or require internet access.
+
+  IP range scan: edit From and To, then choose Start scan. The default covers
+  usable addresses on your connected subnet (your local /24 on larger subnets).
+  The inclusive range is limited to 256 IPv4 addresses. Discovery sends one
+  ICMP echo per address with a 350 ms timeout; hosts blocking ping may be missed.
+  Use ;/. to select a responding host and Enter to open its port scan setup.
+  Selecting a host stops an active range scan and preserves the host list.
+
+  Host port scan: enter an IPv4 host and a TCP port range such as 1-1024, or a
+  single port such as 443. The default is 1-1024; valid ports are 1-65535.
+  It attempts TCP connections with a 250 ms timeout, closes them immediately,
+  and lists open ports. It does not send application data or scan UDP.
+  A full 1-65535 scan can take hours if packets are filtered. Progress and total
+  open ports remain visible; the first 256 open-port results are retained.
+
+  On either results screen, S stops the scan while preserving partial results.
+  Esc returns to setup; leaving setup disconnects Wi-Fi. When opened from a
+  discovered host, Esc from port setup returns to the original host list.
+  Scans run asynchronously and stop on Wi-Fi loss. Results are held in RAM.
+
+SSH TERMINAL
+  Open SSH terminal from the main menu, join Wi-Fi, and set Host, Port, User,
+  and Auth. Password login and SD private-key login are supported. The default
+  key path is /ssh/id_ed25519; key files may be up to 16 KB. Use the masked
+  secret field for the password or encrypted-key passphrase. Secrets are not
+  saved by the app and are cleared after authentication/cancellation.
+  Compare the SHA-256 hexadecimal host-key fingerprint with a trusted copy
+  before pressing Enter. Approval applies only to that connection.
+  The 40x14 ASCII/VT100-style terminal has 96 lines of scrollback. Enter,
+  Backspace and Tab work; Ctrl+letters sends control characters. Ctrl plus
+  ; . , / sends arrow keys. Fn+;/. scrolls history; Fn+Backspace disconnects.
+  Esc sends Escape while connected. Colors are ignored; full-screen apps and
+  Unicode are not fully supported. Keyboard-interactive/MFA is not supported.
+  See README.md for details and current validation limits.

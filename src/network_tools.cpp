@@ -56,12 +56,13 @@ void NetworkTools::stopPing() {
     // prevents late callbacks from being mistaken for a newly allocated handle.
     pingStopping_=true; esp_ping_stop(ping_);
 }
-bool NetworkTools::begin(const RadarAccessPoint& ap, const std::string& password, bool pingMode) {
+bool NetworkTools::begin(const RadarAccessPoint& ap, const std::string& password, bool pingMode, bool connectionOnly) {
     if (busy() || workerRunning_.load() || (WiFi.getMode() & WIFI_MODE_AP) || !ap.connectable) return false;
     if (!events_) events_=xQueueCreate(16,sizeof(Event));
     if (!events_) return false;
     xQueueReset(events_);
     status_={}; status_.pingMode=pingMode;
+    connectionOnly_=connectionOnly;
     std::snprintf(status_.ssid,sizeof(status_.ssid),"%s",ap.ssid);
     WiFi.persistent(false); WiFi.setAutoReconnect(false);
     if (!WiFi.mode(WIFI_STA)) return false;
@@ -126,7 +127,8 @@ void NetworkTools::poll() {
             std::snprintf(status_.address,sizeof(status_.address),"%s",WiFi.localIP().toString().c_str());
             std::snprintf(status_.gateway,sizeof(status_.gateway),"%s",WiFi.gatewayIP().toString().c_str());
             std::snprintf(status_.dnsServer,sizeof(status_.dnsServer),"%s",WiFi.dnsIP().toString().c_str());
-            if (status_.pingMode) {
+            if (connectionOnly_) status_.phase=NetworkPhase::Ready;
+            else if (status_.pingMode) {
                 status_.phase=NetworkPhase::Ready;
                 if (!setTarget(status_.gateway)) {
                     status_.paused=true;
@@ -157,7 +159,7 @@ void NetworkTools::togglePause() {
     else if (validPingTarget(status_.target) && startPing(status_.target,true)) status_.paused=false;
 }
 void NetworkTools::refresh() {
-    if (status_.phase!=NetworkPhase::Ready || workerRunning_.load()) return;
+    if (connectionOnly_ || status_.phase!=NetworkPhase::Ready || workerRunning_.load()) return;
     if (!status_.pingMode) startChecks();
     else status_.ping={};
 }

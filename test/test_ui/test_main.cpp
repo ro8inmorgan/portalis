@@ -325,4 +325,61 @@ void test_app_led_off_zero_wrap_and_portal_resume() {
     led.observePortal(8,20,2,true,1700);
     c=led.render(1700,100,palette,LedAnimation::Steady);TEST_ASSERT_EQUAL(100,c.blue);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }
+void test_lan_scan_screens_and_main_menu_icons_fit() {
+    M5Canvas canvas; ViewModel view; NetworkStatus network;
+    RangeScanStatus hosts; PortScanStatus ports;
+    view.network=&network; view.rangeScan=&hosts; view.portScan=&ports;
+    view.rangeStart="192.168.100.100"; view.rangeEnd="192.168.100.254";
+    view.scanHost="192.168.100.100"; view.scanPortRange="1-65535";
+    view.scanInputLabel="TCP ports (1-65535)"; view.draft="65534-65535";
+    for (auto screen:{Screen::RangeSetup,Screen::PortSetup,Screen::ScanInput}) {
+        view.screen=screen;
+        for (auto phase:{NetworkPhase::Connecting,NetworkPhase::Ready,NetworkPhase::Failed}) {
+            network.phase=phase;
+            for (int row=0;row<3;++row) { view.selected=row; drawUi(canvas,view); }
+        }
+    }
+    for (auto phase:{ScanPhase::Running,ScanPhase::Complete,ScanPhase::Cancelled,ScanPhase::Failed}) {
+        hosts.phase=ports.phase=phase;
+        hosts.total=hosts.checked=256; ports.total=ports.checked=65535;
+        for (size_t count:{size_t(0),size_t(1),size_t(256)}) {
+            hosts.count=ports.count=count; hosts.found=count; ports.found=count ? 65535 : 0;
+            for (size_t i=0;i<count;++i) { hosts.hosts[i]={0xc0a86400U+uint32_t(i),350}; ports.ports[i]=65535-i; }
+            for (size_t row=0;row<std::max(size_t(1),count);++row) {
+                view.selected=row;
+                for (uint32_t now:{0U,5000U}) {
+                    view.now=now; view.screen=Screen::RangeResults; drawUi(canvas,view);
+                    view.screen=Screen::PortResults; drawUi(canvas,view);
+                }
+            }
+        }
+    }
+    for (int icon:{RangeScanHome,PortScanHome}) {
+        view.screen=Screen::Home; view.selected=icon; view.carouselPosition=icon; drawUi(canvas,view);
+        bool label=false;
+        for (const auto& item:canvas.texts)
+            if (item.value==(icon==RangeScanHome ? "IP range scan" : "Host port scan")) label=true;
+        TEST_ASSERT_TRUE(label);
+    }
+    TEST_ASSERT_EQUAL(0,canvas.violations);
+}
+void test_ssh_screens_fit_and_password_is_masked() {
+    M5Canvas canvas;ViewModel view;NetworkStatus net;SshConfig config;SshStatus status;TerminalBuffer terminal;
+    net.phase=NetworkPhase::Ready;config.host="192.168.100.100";config.user="tester";config.secret="not-for-display";
+    config.auth=SshAuth::PrivateKey;config.keyPath="/ssh/a-long-private-key-filename";
+    view.network=&net;view.sshConfig=&config;view.sshStatus=&status;view.terminal=&terminal;
+    view.screen=Screen::SshSetup;
+    for(int row=0;row<7;++row) {view.selected=row;drawUi(canvas,view);TEST_ASSERT_EQUAL_MESSAGE(0,canvas.violations,"SSH setup");}
+    view.screen=Screen::SshInput;view.sshInputSecret=true;view.draft=config.secret.c_str();view.sshInputLabel="Password / passphrase";drawUi(canvas,view);
+    for(const auto& text:canvas.texts) TEST_ASSERT_EQUAL(std::string::npos,text.value.find(config.secret));
+    std::strcpy(status.fingerprint,"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    for(auto phase:{SshPhase::Connecting,SshPhase::VerifyHost,SshPhase::Authenticating,SshPhase::Active,SshPhase::Closed,SshPhase::Failed,SshPhase::Stopping}) {
+        status.phase=phase;view.screen=Screen::SshSession;drawUi(canvas,view);TEST_ASSERT_EQUAL_MESSAGE(0,canvas.violations,std::to_string(static_cast<int>(phase)).c_str());
+    }
+    for(int icon:{PortScanHome,SshHome,SettingsHome}) {
+        view.screen=Screen::Home;view.selected=icon;view.carouselPosition=icon;
+        for(uint32_t now=0;now<12000;now+=100) {view.now=now;drawUi(canvas,view);}
+    }
+    TEST_ASSERT_EQUAL(0,canvas.violations);
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_ssh_screens_fit_and_password_is_masked); RUN_TEST(test_lan_scan_screens_and_main_menu_icons_fit); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }

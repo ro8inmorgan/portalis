@@ -75,9 +75,11 @@ public:
         slot_ = free; target_ = candidate; started_ = now; joined_ = false; active_ = true;
         return true;
     }
-    bool observeConnection(uint32_t /*now*/) {
+    bool observeConnection(uint32_t now) {
         if (!active_ || joined_) return false;
-        joined_ = true; return true;
+        joined_ = true;
+        started_ = now;
+        return true;
     }
     bool finished(uint32_t now) const {
         return active_ && static_cast<uint32_t>(now - started_) >= timeoutMs_;

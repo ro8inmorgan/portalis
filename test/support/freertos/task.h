@@ -9,3 +9,6 @@ inline int xTaskCreate(void (*task)(void*),const char*,int,void* arg,int,void*) 
 }
 inline void vTaskDelete(void*) {}
 inline void runFakeTask() { auto fn=fakeTask;auto arg=fakeTaskArg;fakeTask=nullptr;fakeTaskArg=nullptr;fn(arg); }
+
+inline void (*fakeTaskTick)()=nullptr;
+inline void vTaskDelay(uint32_t) { if (fakeTaskTick) fakeTaskTick(); }

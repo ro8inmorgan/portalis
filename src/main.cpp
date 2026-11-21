@@ -7,6 +7,8 @@
 #include "ui.h"
 #include "wifi_scanner.h"
 #include "network_tools.h"
+#include "lan_scanner.h"
+#include "ssh_terminal.h"
 #include "wifi_profiles.h"
 #include "probe_test.h"
 
@@ -15,6 +17,22 @@ namespace {
 Portal portal;
 WifiScanner scanner;
 NetworkTools networkTools;
+LanScanner lanScanner;
+SshTerminal sshTerminal;
+SshConfig sshConfig;
+int sshField=0;
+size_t terminalScroll=0;
+static const char* sshFieldLabel(int field) {
+    const char* labels[]={"Host / IPv4", "SSH port", "Username", "Authentication", "Password / passphrase", "Private key SD path"};
+    return labels[std::max(0,std::min(5,field))];
+}
+std::string rangeStart, rangeEnd, scanHost, scanPortRange="1-1024", pendingScanHost;
+bool portFromRange=false;
+int rangeSelection=0;
+enum class ScanField { RangeStart, RangeEnd, Host, Ports };
+ScanField scanField=ScanField::RangeStart;
+Screen scanInputReturn=Screen::RangeSetup;
+
 WifiProfiles wifiProfiles;
 Preferences wifiPreferences;
 bool wifiPreferencesReady=false;
@@ -24,6 +42,13 @@ NetworkChanges networkChanges;
 RadarAccessPoint networkChoice;
 int toolHomeIndex=ChannelsHome;
 bool channelOverlapView=false;
+bool isScanTool() { return toolHomeIndex==RangeScanHome || toolHomeIndex==PortScanHome; }
+Screen networkToolScreen() {
+    if (toolHomeIndex==SshHome) return Screen::SshSetup;
+    if (toolHomeIndex==RangeScanHome) return Screen::RangeSetup;
+    if (toolHomeIndex==PortScanHome) return Screen::PortSetup;
+    return toolHomeIndex==PingHome ? Screen::Ping : Screen::Diagnostics;
+}
 ProbeTest probe;
 AppLedFeedback ledFeedback;
 ProbeConfig probeConfig;
@@ -157,13 +182,14 @@ void clearPendingProfile() {
 void clearNetworkPassword() { std::fill(draft.begin(),draft.end(),'\0'); draft.clear(); }
 void stopWifiTool() {
     ledFeedback.signal(LedEvent::Leave,millis());
+    pendingScanHost.clear(); lanScanner.cancel(); sshTerminal.stop(); eraseSecret(sshConfig.secret);
     clearNetworkPassword(); clearPendingProfile(); scanner.stop(); networkTools.stop();
-    if (networkTools.busy()) show(Screen::NetworkStopping);
+    if (networkTools.busy() || lanScanner.busy() || sshTerminal.busy()) show(Screen::NetworkStopping);
     else openHome(toolHomeIndex);
 }
 void openWifiTool(int index) {
     toolHomeIndex=index;
-    if (portal.running() || probe.running() || networkTools.busy()) {
+    if (portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy()) {
         notice("Stop the active Wi-Fi mode first.",Screen::Home); return;
     }
     if (!scanner.start()) { notice("Could not start Wi-Fi scan.",Screen::Home); return; }
@@ -173,12 +199,13 @@ void openWifiTool(int index) {
 }
 void joinToolNetwork() {
     scanner.stop();
-    const bool started=networkTools.begin(networkChoice,draft,toolHomeIndex==PingHome);
+    const bool started=networkTools.begin(networkChoice,draft,toolHomeIndex==PingHome,isScanTool() || toolHomeIndex==SshHome);
     clearPendingProfile();
     if (started) pendingProfile={networkChoice.rawSsid,draft};
     clearNetworkPassword();
     if (!started) { notice("Could not join network.",Screen::Home); return; }
-    show(toolHomeIndex==PingHome ? Screen::Ping : Screen::Diagnostics);
+    portFromRange=false; pendingScanHost.clear();
+    show(networkToolScreen());
 }
 void handleKey(char key) {
     const bool enter = key == '\n', back = key == '\b', escape = key == '`';
@@ -263,6 +290,111 @@ void handleKey(char key) {
                 else joinToolNetwork();
             } else if (key>=32 && key<=126 && draft.size()<64) draft+=key;
             break;
+        case Screen::RangeSetup:
+        case Screen::PortSetup: {
+            const bool range=screen==Screen::RangeSetup;
+            if (escape || back) {
+                if (!range && portFromRange) { show(Screen::RangeResults); selected=rangeSelection; }
+                else stopWifiTool();
+                break;
+            }
+            if (networkTools.status().phase!=NetworkPhase::Ready) break;
+            if (up) selected=(selected+2)%3;
+            if (down) selected=(selected+1)%3;
+            if (enter) {
+                if (lanScanner.busy()) { notice("Scan stopping. Try again shortly.",screen); break; }
+                if (selected<2) {
+                    scanInputReturn=screen;
+                    scanField=range ? (selected==0 ? ScanField::RangeStart : ScanField::RangeEnd) : (selected==0 ? ScanField::Host : ScanField::Ports);
+                    draft=range ? (selected==0 ? rangeStart : rangeEnd) : (selected==0 ? scanHost : scanPortRange);
+                    show(Screen::ScanInput);
+                } else if (range) {
+                    if (lanScanner.startRange(rangeStart,rangeEnd)) show(Screen::RangeResults);
+                    else notice("Use an ascending IPv4 range of at most 256 addresses while connected.",Screen::RangeSetup);
+                } else {
+                    if (lanScanner.startPorts(scanHost,scanPortRange)) show(Screen::PortResults);
+                    else notice("Enter a host IP and TCP ports 1-65535 while connected.",Screen::PortSetup);
+                }
+            }
+            break;
+        }
+        case Screen::SshSetup:
+            if (escape || back) { stopWifiTool(); break; }
+            if (networkTools.status().phase!=NetworkPhase::Ready || sshTerminal.busy()) break;
+            if (up) selected=(selected+6)%7;
+            if (down) selected=(selected+1)%7;
+            if (enter) {
+                if (selected==3) {
+                    sshConfig.auth=sshConfig.auth==SshAuth::Password ? SshAuth::PrivateKey : SshAuth::Password;
+                    eraseSecret(sshConfig.secret);
+                } else if (selected==6) {
+                    if (!sshTerminal.start(sshConfig)) notice("Check SSH settings, Wi-Fi, and free memory.",Screen::SshSetup);
+                    else { eraseSecret(sshConfig.secret);terminalScroll=0;show(Screen::SshSession); }
+                } else {
+                    sshField=selected;
+                    draft=selected==0 ? sshConfig.host : selected==1 ? std::to_string(sshConfig.port) : selected==2 ? sshConfig.user : selected==4 ? sshConfig.secret : sshConfig.keyPath;
+                    show(Screen::SshInput);
+                }
+            }
+            break;
+        case Screen::SshInput:
+            if (escape) { eraseSecret(draft);show(Screen::SshSetup);selected=sshField; }
+            else if (back) { if(!draft.empty()) { draft.back()=0;draft.pop_back(); } }
+            else if (enter) {
+                if (sshField==1) {
+                    uint16_t first,last;
+                    if(!scanPorts(draft,first,last) || first!=last || draft.find('-')!=std::string::npos) {
+                        notice("Enter an SSH port from 1 to 65535.",Screen::SshInput);break;
+                    }
+                    sshConfig.port=first;
+                } else if (sshField==0) sshConfig.host=draft;
+                else if (sshField==2) sshConfig.user=draft;
+                else if (sshField==4) { eraseSecret(sshConfig.secret);sshConfig.secret=draft; }
+                else sshConfig.keyPath=draft;
+                eraseSecret(draft);show(Screen::SshSetup);selected=sshField;
+            } else if(key>=32 && key<=126 && draft.size()<(sshField==1 ? 5U : sshField==0 || sshField==2 ? 63U : 128U)) draft+=key;
+            break;
+        case Screen::SshSession:
+            if (sshTerminal.status().phase==SshPhase::VerifyHost) {
+                if(enter) sshTerminal.trustHost();
+                else if(escape || back) { sshTerminal.stop();show(Screen::SshSetup); }
+            } else if(sshTerminal.status().phase==SshPhase::Active) {
+                const char input=enter ? '\r' : back ? '\x7f' : key;
+                sshTerminal.send(&input,1);terminalScroll=0;
+            } else if(escape || back) { sshTerminal.stop();show(Screen::SshSetup); }
+            break;
+        case Screen::ScanInput:
+            if (escape) { draft.clear(); show(scanInputReturn); }
+            else if (back) { if (!draft.empty()) draft.pop_back(); }
+            else if (enter) {
+                uint32_t ip; uint16_t first,last;
+                if (scanField==ScanField::Ports ? !scanPorts(draft,first,last) : !parseScanIp(draft,ip)) {
+                    notice("Enter a valid IPv4 address or ports such as 1-1024.",Screen::ScanInput); break;
+                }
+                if (scanField==ScanField::RangeStart) rangeStart=draft;
+                else if (scanField==ScanField::RangeEnd) rangeEnd=draft;
+                else if (scanField==ScanField::Host) scanHost=draft;
+                else scanPortRange=draft;
+                draft.clear(); show(scanInputReturn);
+            } else if (((key>='0' && key<='9') || key=='.' || key=='-') && draft.size()<15) draft+=key;
+            break;
+        case Screen::RangeResults:
+        case Screen::PortResults: {
+            const bool range=screen==Screen::RangeResults;
+            const int count=range ? lanScanner.range().count : lanScanner.ports().count;
+            if (escape || back) {
+                pendingScanHost.clear(); lanScanner.cancel(); sshTerminal.stop(); eraseSecret(sshConfig.secret);
+                show(range ? Screen::RangeSetup : Screen::PortSetup);
+            } else if (key=='s' || key=='S') lanScanner.cancel();
+            else if (up && selected>0) --selected;
+            else if (down && selected+1<count) ++selected;
+            else if (enter && range && selected>=0 && selected<count) {
+                rangeSelection=selected;
+                pendingScanHost=scanIpText(lanScanner.range().hosts[selected].ip);
+                lanScanner.cancel();
+            }
+            break;
+        }
         case Screen::Diagnostics:
         case Screen::Ping:
             if (escape || back) stopWifiTool();
@@ -466,7 +598,7 @@ void pollKeyboard() {
     // Detect individual character edges rather than relying on isChange(), which
     // only notices a change in the number of keys in the Cardputer library.
     static std::array<bool, 128> previous{};
-    static bool oldEnter = false, oldDelete = false;
+    static bool oldEnter = false, oldDelete = false, oldTab=false;
     std::array<bool, 128> current{};
     const auto& keys = M5Cardputer.Keyboard.keysState();
     for (unsigned char key : keys.word) if (key < current.size()) current[key] = true;
@@ -474,6 +606,30 @@ void pollKeyboard() {
     const bool enter = keys.enter && !oldEnter, del = keys.del && !oldDelete;
     const auto before = previous;
     previous = current; oldEnter = keys.enter; oldDelete = keys.del;
+    const bool tab=keys.tab && !oldTab; oldTab=keys.tab;
+    if(screen==Screen::SshSession && sshTerminal.status().phase==SshPhase::Active) {
+        if(keys.fn && del) { sshTerminal.stop();show(Screen::SshSetup);return; }
+        if(enter) { sshTerminal.send("\r",1);terminalScroll=0; }
+        if(del) sshTerminal.send("\x7f",1);
+        if(tab) sshTerminal.send("\t",1);
+        for(size_t key=32;key<current.size();++key) if(current[key] && !before[key]) {
+            if(keys.fn && (key==';' || key=='.')) {
+                if(key==';') terminalScroll=std::min(terminalScroll+1,sshTerminal.terminal().historyCount());
+                else if(terminalScroll) --terminalScroll;
+                continue;
+            }
+            if(keys.ctrl && (key==';' || key=='.' || key==',' || key=='/')) {
+                const char* arrow=key==';' ? "\x1b[A" : key=='.' ? "\x1b[B" : key==',' ? "\x1b[D" : "\x1b[C";
+                sshTerminal.send(arrow,3);
+            } else if(key=='`') sshTerminal.send("\x1b",1);
+            else {
+                char byte=keys.ctrl ? static_cast<char>(key&31) : static_cast<char>(key);
+                sshTerminal.send(&byte,1);
+            }
+            terminalScroll=0;
+        }
+        return;
+    }
     if (enter) { handleKey('\n'); return; }
     if (del) { handleKey('\b'); return; }
     for (size_t key = 32; key < current.size(); ++key) {
@@ -485,6 +641,12 @@ void render() {
     view.carouselPosition = carousel.position(millis());
     view.radar = &scanner.snapshot();
     view.signal=&signalHistory; view.changes=&networkChanges; view.network=&networkTools.status();
+    view.sshConfig=&sshConfig;view.sshStatus=&sshTerminal.status();view.terminal=&sshTerminal.terminal();
+    view.sshInputLabel=sshFieldLabel(sshField);view.sshInputSecret=sshField==4;view.terminalScroll=terminalScroll;
+    view.rangeScan=&lanScanner.range(); view.portScan=&lanScanner.ports(); view.scanBusy=lanScanner.busy();
+    view.rangeStart=rangeStart.c_str(); view.rangeEnd=rangeEnd.c_str(); view.scanHost=scanHost.c_str();
+    view.scanPortRange=scanPortRange.c_str();
+    view.scanInputLabel=scanField==ScanField::RangeStart ? "First IPv4 address" : scanField==ScanField::RangeEnd ? "Last IPv4 address" : scanField==ScanField::Host ? "Host IPv4 address" : "TCP ports (1-65535)";
     view.networkName=networkChoice.ssid; view.passwordLength=draft.size();
     view.networkPickerCanJoin=toolHomeIndex!=SignalHome; view.channelOverlapView=channelOverlapView;
     for (size_t i=0;i<scanner.snapshot().count;++i) view.rememberedNetworks[i]=wifiProfiles.find(scanner.snapshot().points[i].rawSsid)>=0;
@@ -517,10 +679,12 @@ void render() {
     view.confirmedPulse = confirmationPulse.strength(view.now);
     view.clientsDecreased = clientPulse.decreased();
     lastSession = view.session; wasRunning = view.running;
-    static EventSounds eventSounds;
+    static EventSounds eventSounds, probeSounds;
     const bool audioEnabled = uiSettings.eventSounds && uiSettings.volume;
-    const auto note = eventSounds.update(view.clients, view.count, view.session, view.running, audioEnabled, view.now);
-    if (!view.running || !audioEnabled) M5.Speaker.stop(1);
+    const auto portalNote = eventSounds.update(view.clients, view.count, view.session, view.running, audioEnabled, view.now);
+    const auto probeNote = probeSounds.update(probe.clients(), probe.count(), probe.session(), probe.running(), audioEnabled, view.now);
+    const auto note = probe.running() ? probeNote : portalNote;
+    if ((!view.running && !probe.running()) || !audioEnabled) M5.Speaker.stop(1);
     else if (note.frequency) {
         M5.Speaker.setVolume(uiSettings.speakerVolume());
         M5.Speaker.tone(note.frequency, note.duration, 1, true);
@@ -633,6 +797,25 @@ void loop() {
     const uint32_t sent=networkTools.status().ping.sent, received=networkTools.status().ping.received;
     networkTools.poll();
     const auto& currentNetwork=networkTools.status();
+    lanScanner.poll();
+    sshTerminal.poll();
+    if(toolHomeIndex==SshHome && networkPhase==NetworkPhase::Connecting && currentNetwork.phase==NetworkPhase::Ready && sshConfig.host.empty())
+        sshConfig.host=currentNetwork.gateway;
+    if (isScanTool() && networkPhase==NetworkPhase::Connecting && currentNetwork.phase==NetworkPhase::Ready) {
+        uint32_t ip=0; parseScanIp(currentNetwork.address,ip);
+        const auto maskBytes=WiFi.subnetMask();
+        uint32_t mask=(uint32_t(maskBytes[0])<<24)|(uint32_t(maskBytes[1])<<16)|(uint32_t(maskBytes[2])<<8)|maskBytes[3];
+        if (mask<0xffffff00U) mask=0xffffff00U;
+        const uint32_t network=ip&mask, broadcast=network|~mask;
+        rangeStart=scanIpText(broadcast-network>1 ? network+1 : network);
+        rangeEnd=scanIpText(broadcast-network>1 ? broadcast-1 : broadcast);
+        scanHost=currentNetwork.gateway;
+        if (!parseScanIp(scanHost,ip)) scanHost=currentNetwork.address;
+        scanPortRange="1-1024";
+    }
+    if (!pendingScanHost.empty() && !lanScanner.busy()) {
+        scanHost=pendingScanHost; pendingScanHost.clear(); portFromRange=true; show(Screen::PortSetup);
+    }
     if (currentNetwork.phase!=networkPhase) {
         if (currentNetwork.phase==NetworkPhase::Failed) ledFeedback.signal(LedEvent::Failure,millis());
         else if (networkPhase==NetworkPhase::Connecting && currentNetwork.dhcp==CheckState::Pass) ledFeedback.signal(LedEvent::Join,millis());
@@ -649,10 +832,10 @@ void loop() {
         if (connection.dhcp==CheckState::Pass && (connection.phase==NetworkPhase::Ready || connection.phase==NetworkPhase::Checking)) {
             wifiProfiles.remember(pendingProfile.ssid,pendingProfile.password);
             const bool saved=saveWifiProfiles(); clearPendingProfile();
-            if (!saved) notice("Joined, but could not save Wi-Fi profile.",toolHomeIndex==PingHome ? Screen::Ping : Screen::Diagnostics);
+            if (!saved) notice("Joined, but could not save Wi-Fi profile.",networkToolScreen());
         } else if (connection.phase==NetworkPhase::Failed || connection.phase==NetworkPhase::Idle) clearPendingProfile();
     }
-    if (screen==Screen::NetworkStopping && !networkTools.busy()) openHome(toolHomeIndex);
+    if (screen==Screen::NetworkStopping && !networkTools.busy() && !lanScanner.busy() && !sshTerminal.busy()) openHome(toolHomeIndex);
     const auto& scan = scanner.snapshot();
     const uint64_t selectedId = selected >= 0 && selected < static_cast<int>(scan.count) ? scan.points[selected].id : 0;
     const uint32_t generation = scan.generation;

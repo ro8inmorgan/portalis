@@ -8,6 +8,12 @@ namespace {
 uint16_t BG = 0x0843, PANEL = 0x10E6, ACCENT = 0x6F99;
 constexpr uint16_t FG = 0xF7BE, MUTED = 0x9CF3, GOLD = 0xFD6A;
 constexpr int W = 240, H = 135;
+// Large fallback snapshots must not live on the 8 KB Arduino loop stack.
+// drawUi reserves its frame before selecting a screen, including the main menu.
+template<class T> const T& emptyView() {
+    static const T value{};
+    return value;
+}
 void text(M5Canvas& c, const std::string& value, int x, int y, uint16_t color = FG, float size = 2) {
     c.setTextColor(color); c.setTextSize(size); c.setTextDatum(top_left); c.drawString(value.c_str(), x, y);
 }
@@ -135,7 +141,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::Home: {
             title(c, "PORTALIS");
-            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "Settings"};
+            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "IP range scan", "Host port scan", "SSH terminal", "Settings"};
             c.setClipRect(0, 26, 240, 66);
             for (int icon = 0; icon < CarouselMotion::count; ++icon) {
                 float delta = icon - v.carouselPosition;
@@ -195,19 +201,49 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                     c.drawLine(cx, cy + 1, cx, cy + 20, ink);
                     c.drawLine(cx - 12, cy + 20, cx + 12, cy + 20, ink);
                     c.fillCircle(cx, cy - 3, 3, blendColor(ink, FG, breathe));
+                } else if (icon == RangeScanHome) {
+                    c.drawLine(cx-16,cy,cx+16,cy,ink);
+                    c.drawLine(cx,cy-16,cx,cy+16,ink);
+                    const int highlight=(v.now/450)%4;
+                    const int xs[]={-16,16,0,0}, ys[]={0,0,-16,16};
+                    for (int node=0;node<4;++node) {
+                        c.fillRoundRect(cx+xs[node]-5,cy+ys[node]-5,10,10,2,node==highlight ? FG : ink);
+                    }
+                } else if (icon == PortScanHome) {
+                    // An Ethernet socket with a moving probe, distinct from the event list.
+                    c.fillRoundRect(cx-23,cy-18,32,30,3,ink);
+                    c.fillRect(cx-20,cy-15,26,19,fill);
+                    c.fillRect(cx-14,cy+3,14,6,fill);
+                    for(int pin=0;pin<4;++pin) c.fillRect(cx-17+pin*5,cy-14,2,8,FG);
+                    const int sweep=static_cast<int>((v.now%1800)*22/1800);
+                    c.drawLine(cx-18+sweep,cy-4,cx-18+sweep,cy+1,ACCENT);
+                    c.fillCircle(cx+10,cy+7,9,fill);c.drawCircle(cx+10,cy+7,9,FG);
+                    c.drawLine(cx+16,cy+14,cx+23,cy+21,FG);
+                    c.drawLine(cx+17,cy+13,cx+24,cy+20,FG);
+                } else if (icon == SshHome) {
+                    c.fillRoundRect(cx-23,cy-18,46,36,4,ink);
+                    c.fillRoundRect(cx-21,cy-16,42,32,3,fill);
+                    c.drawLine(cx-14,cy-6,cx-6,cy,FG);c.drawLine(cx-6,cy,cx-14,cy+6,FG);
+                    if((v.now/500)%2==0) c.drawLine(cx,cy+8,cx+13,cy+8,ink);
                 } else if (icon == SettingsHome) {
-                    const float rotation = (v.now % 10000) * (6.28318530718f / 10000.0f);
-                    c.drawCircle(cx, cy, 14, ink); c.drawCircle(cx, cy, 7, ink);
-                    for (int tooth = 0; tooth < 8; ++tooth) {
-                        const float angle = rotation + tooth * 0.785398163f;
-                        c.drawLine(cx + static_cast<int>(14 * std::cos(angle)), cy + static_cast<int>(14 * std::sin(angle)),
-                                   cx + static_cast<int>(21 * std::cos(angle)), cy + static_cast<int>(21 * std::sin(angle)), ink);
-                    }
-                    for (int spoke = 0; spoke < 3; ++spoke) {
-                        const float angle = rotation + spoke * 2.094395102f;
-                        c.drawLine(cx + static_cast<int>(8 * std::cos(angle)), cy + static_cast<int>(8 * std::sin(angle)),
-                                   cx + static_cast<int>(12 * std::cos(angle)), cy + static_cast<int>(12 * std::sin(angle)), ink);
-                    }
+                    const float rotation=(v.now%12000)*(6.28318530718f/12000.0f);
+                    auto gear=[&](int x,int y,int root,int tip,int teeth,float angle) {
+                        int firstX=0,firstY=0,oldX=0,oldY=0;
+                        for(int point=0;point<=teeth*4;++point) {
+                            const int phase=point%4;
+                            const float a=angle+point*(6.28318530718f/(teeth*4));
+                            const int radius=(phase==1 || phase==2) ? tip : root;
+                            const int px=x+static_cast<int>(radius*std::cos(a));
+                            const int py=y+static_cast<int>(radius*std::sin(a));
+                            if(point) c.drawLine(oldX,oldY,px,py,ink);
+                            else { firstX=px;firstY=py; }
+                            oldX=px;oldY=py;
+                        }
+                        c.drawLine(oldX,oldY,firstX,firstY,ink);
+                        c.drawCircle(x,y,root/2,ink);
+                    };
+                    gear(cx-8,cy+6,11,15,8,rotation);
+                    gear(cx+10,cy-8,7,11,6,-rotation*8.0f/6.0f+0.52f);
                 } else if (icon == ChannelsHome) {
                     for (int bar=0;bar<5;++bar) {
                         const int h=8+static_cast<int>(24*(0.5f+0.5f*std::sin(v.now%4000*0.00157f+bar)));
@@ -247,7 +283,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::Channels: {
             title(c,"CHANNELS");
-            const RadarSnapshot empty; const auto& scan=v.radar ? *v.radar : empty;
+            const auto& scan=v.radar ? *v.radar : emptyView<RadarSnapshot>();
             const int chosen=std::max(1,std::min(14,v.selected+1));
             text(c,scan.failed ? "Scan failed - R retry" : scan.scanning ? "Scanning..." : v.channelOverlapView ? "Overlap estimate" : "AP counts / 2.4 GHz",6,28,MUTED,1.5f);
             uint32_t peak=1;
@@ -264,7 +300,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::ToolNetworks: {
             title(c,"WI-FI PICKER");
-            const RadarSnapshot empty; const auto& scan=v.radar ? *v.radar : empty;
+            const auto& scan=v.radar ? *v.radar : emptyView<RadarSnapshot>();
             const int first=std::max(0,v.selected/4)*4;
             for (int row=0;row<4 && first+row<static_cast<int>(scan.count);++row) {
                 const int index=first+row;
@@ -305,6 +341,105 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             title(c,"PING TARGET"); text(c,"IPv4 address:",6,33,MUTED,1.5f);
             text(c,v.draft,6,56,ACCENT,2);
             footer(c,"Enter Apply Esc Cancel"); break;
+        case Screen::SshSetup: {
+            title(c,"SSH TERMINAL");
+            const auto& net=v.network ? *v.network : emptyView<NetworkStatus>();
+            const auto& config=v.sshConfig ? *v.sshConfig : emptyView<SshConfig>();
+            const auto phase=v.sshStatus ? v.sshStatus->phase : SshPhase::Idle;
+            if(net.phase==NetworkPhase::Connecting) {
+                ticker(c,net.ssid,6,32,228,elapsed,FG,1.5f);text(c,"Joining Wi-Fi...",6,60,MUTED,1.5f);
+            } else if(net.phase!=NetworkPhase::Ready) wrapped(c,*net.message ? net.message : "Connect to Wi-Fi first",32,3);
+            else if(phase==SshPhase::Stopping) text(c,"Closing SSH session...",6,50,MUTED,1.5f);
+            else {
+                const std::array<std::string,7> labels{{"Host: "+config.host,"Port: "+std::to_string(config.port),
+                    "User: "+config.user,config.auth==SshAuth::Password ? "Auth: password" : "Auth: private key",
+                    std::string(config.auth==SshAuth::Password ? "Password: " : "Passphrase: ")+(config.secret.empty()?"not set":"********"),
+                    "Key: "+config.keyPath,"Connect"}};
+                const int first=std::max(0,v.selected-3);
+                for(int row=0;row<4 && first+row<7;++row) selectedRow(c,labels[first+row],row,first+row==v.selected,elapsed);
+            }
+            footer(c,";/. Move ENT Select Esc");break;
+        }
+        case Screen::SshInput:
+            title(c,"SSH SETTING");text(c,v.sshInputLabel,6,30,MUTED,1.5f);
+            ticker(c,v.sshInputSecret ? std::string(std::strlen(v.draft),'*') : v.draft,6,56,228,elapsed,ACCENT,1.5f);
+            footer(c,"Enter Apply Esc Cancel");break;
+        case Screen::SshSession: {
+            const auto& state=v.sshStatus ? *v.sshStatus : emptyView<SshStatus>();
+            if(state.phase==SshPhase::Active && v.terminal) {
+                const auto& terminal=*v.terminal;
+                text(c,v.terminalScroll ? "SSH / SCROLLBACK" : "SSH / CONNECTED",2,0,ACCENT,1);
+                c.drawFastHLine(0,10,240,PANEL);
+                for(int row=0;row<TerminalBuffer::rows;++row)
+                    text(c,terminal.line(row,v.terminalScroll),0,12+row*8,FG,1);
+                if(!v.terminalScroll && (v.now/500)%2==0)
+                    c.drawFastHLine(terminal.column()*6,12+terminal.row()*8+7,6,ACCENT);
+                text(c,"Fn+Del Exit Ctrl+arrows Fn+up/dn Scroll",0,126,MUTED,1);
+            } else if(state.phase==SshPhase::VerifyHost) {
+                title(c,"SSH HOST KEY");
+                text(c,"SHA256 (hex):",6,28,MUTED,1.5f);
+                for(int row=0;row<4;++row) text(c,std::string(state.fingerprint).substr(row*16,16),6,45+row*16,FG,1.5f);
+                footer(c,"ENT Trust once Esc Reject");
+            } else {
+                title(c,"SSH SESSION");
+                const char* label=state.phase==SshPhase::Connecting ? "Connecting..." : state.phase==SshPhase::Authenticating ? "Authenticating..." : state.message;
+                wrapped(c,label,35,4);
+                footer(c,"Esc Back / Cancel");
+            }
+            break;
+        }
+        case Screen::ScanInput:
+            title(c,"SCAN TARGET"); text(c,v.scanInputLabel,6,32,MUTED,1.5f);
+            text(c,v.draft,6,58,ACCENT,2);
+            footer(c,"Enter Apply Esc Cancel"); break;
+        case Screen::RangeSetup:
+        case Screen::PortSetup: {
+            const bool range=v.screen==Screen::RangeSetup;
+            title(c,range ? "IP RANGE SCAN" : "HOST PORT SCAN");
+            const auto& net=v.network ? *v.network : emptyView<NetworkStatus>();
+            if (net.phase==NetworkPhase::Connecting) {
+                ticker(c,net.ssid,6,32,228,elapsed,FG,1.5f);
+                text(c,"Joining / waiting DHCP",6,57,MUTED,1.5f);
+                footer(c,"Esc Cancel");
+            } else if (net.phase!=NetworkPhase::Ready) {
+                wrapped(c,*net.message ? net.message : "Connect to Wi-Fi first",32,3);
+                footer(c,"Esc Back");
+            } else {
+                const std::array<std::string,3> labels{{
+                    std::string(range ? "From: " : "Host: ")+(range ? v.rangeStart : v.scanHost),
+                    std::string(range ? "To: " : "Ports: ")+(range ? v.rangeEnd : v.scanPortRange),
+                    v.scanBusy ? "Stopping scan..." : "Start scan"}};
+                for (int row=0;row<3;++row) selectedRow(c,labels[row],row,row==v.selected,elapsed);
+                text(c,range ? "Ping discovery / max 256" : "TCP connect / 250ms each",6,103,MUTED,1.5f);
+                footer(c,";/. Move ENT Select Esc");
+            }
+            break;
+        }
+        case Screen::RangeResults:
+        case Screen::PortResults: {
+            const bool range=v.screen==Screen::RangeResults;
+            title(c,range ? "FOUND HOSTS" : "OPEN TCP PORTS");
+            const auto& hosts=v.rangeScan ? *v.rangeScan : emptyView<RangeScanStatus>();
+            const auto& ports=v.portScan ? *v.portScan : emptyView<PortScanStatus>();
+            const ScanProgress& progress=range ? static_cast<const ScanProgress&>(hosts) : static_cast<const ScanProgress&>(ports);
+            const char* phase=progress.phase==ScanPhase::Running ? "Scan" : progress.phase==ScanPhase::Complete ? "Done" : progress.phase==ScanPhase::Cancelled ? "Stopped" : progress.phase==ScanPhase::Failed ? "Failed" : "Ready";
+            ticker(c,std::string(phase)+" "+std::to_string(progress.checked)+"/"+std::to_string(progress.total)+" Found "+std::to_string(progress.found),6,28,228,elapsed,MUTED,1.5f);
+            const size_t count=range ? hosts.count : ports.count;
+            if (!count) {
+                text(c,range ? "No ping replies yet" : "No open ports found",6,58,FG,1.5f);
+                text(c,range ? "Some hosts block ping" : "Closed or no response",6,82,MUTED,1.5f);
+            } else {
+                const int first=std::max(0,v.selected)/3*3;
+                for (int row=0;row<3 && first+row<static_cast<int>(count);++row) {
+                    const int index=first+row, y=48+row*21;
+                    if (index==v.selected) c.fillRoundRect(3,y-2,234,20,4,PANEL);
+                    const std::string label=range ? scanIpText(hosts.hosts[index].ip)+" "+std::to_string(hosts.hosts[index].ms)+"ms" : "TCP "+std::to_string(ports.ports[index])+" open";
+                    ticker(c,label,6,y,228,elapsed,index==v.selected ? ACCENT : FG,1.5f);
+                }
+            }
+            if (progress.found>count) text(c,"First 256 results shown",6,110,MUTED,1);
+            footer(c,range ? ";/. Host ENT Ports S Stop" : ";/. Ports S Stop Esc Back"); break;
+        }
         case Screen::NetworkStopping:
             title(c,"DISCONNECT"); text(c,"Finishing checks...",6,43,FG,1.5f);
             text(c,"DNS may take 15 sec",6,66,MUTED,1.5f);
@@ -312,7 +447,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         case Screen::Diagnostics:
         case Screen::Ping: {
             title(c,v.screen==Screen::Ping ? "PING MONITOR" : "DIAGNOSTICS");
-            const NetworkStatus empty; const auto& net=v.network ? *v.network : empty;
+            const auto& net=v.network ? *v.network : emptyView<NetworkStatus>();
             if (net.phase==NetworkPhase::Connecting) {
                 ticker(c,net.ssid,6,32,228,elapsed,FG,1.5f);
                 text(c,"Joining / waiting DHCP",6,57,MUTED,1.5f);
@@ -348,8 +483,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         case Screen::Radar:
         case Screen::ScanList: {
             title(c, v.screen == Screen::Radar ? "WI-FI RADAR" : "WI-FI LIST");
-            const RadarSnapshot empty;
-            const auto& scan = v.radar ? *v.radar : empty;
+            const auto& scan = v.radar ? *v.radar : emptyView<RadarSnapshot>();
             const size_t chosen = scan.count ? std::min(static_cast<size_t>(std::max(0, v.selected)), scan.count - 1) : 0;
             if (v.screen == Screen::Radar) {
                 constexpr int cx = 53, cy = 69, radius = 39;
@@ -421,8 +555,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 footer(c, v.selected == 1 ? ",/ Adjust ENT +30s" : ";/. Move ENT Select R SD");
                 break;
             }
-            const ProbeStatus empty;
-            const auto& state = v.probeStatus ? *v.probeStatus : empty;
+            const auto& state = v.probeStatus ? *v.probeStatus : emptyView<ProbeStatus>();
             const bool ap = state.phase == ProbePhase::Waiting || state.phase == ProbePhase::Notice;
             if (ap) {
                 ticker(c, state.ssid, 6, 29, 228, elapsed);
@@ -569,6 +702,6 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         case Screen::Error:
             title(c, "NOTICE"); wrapped(c, v.error, 29, 4, GOLD); footer(c, "Enter / Esc Back"); break;
     }
-    if (v.screen != Screen::Splash) battery(c, v.batteryPercent);
+    if (v.screen != Screen::Splash && !(v.screen==Screen::SshSession && v.sshStatus && v.sshStatus->phase==SshPhase::Active)) battery(c, v.batteryPercent);
 }
 } // namespace portalis

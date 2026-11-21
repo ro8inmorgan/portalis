@@ -41,11 +41,14 @@ void ProbeTest::init(std::function<bool(Event, const std::string&)> onFeedback) 
             server_.send(507, "text/plain", "Could not save feedback. Check the SD card and retry."); return;
         }
         tickets_.consume(submission.ticket, millis());
+        ++confirmations_;
         server_.send(200, "text/plain", "Saved");
     });
     server_.on("/done", HTTP_GET, [this]() {
         securityHeaders();
         server_.send(200, "text/html; charset=utf-8", "<!doctype html><html lang=\"en\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Feedback saved</title><body><h1>Feedback saved</h1><p>Thank you. You can disconnect now.</p></body></html>");
+        finishPending_ = true;
+        finishAt_ = millis() + 2000;
     });
     server_.onNotFound([this]() {
         if (server_.method() != HTTP_GET) { securityHeaders(); server_.send(405, "text/plain", "Method not allowed"); return; }
@@ -97,7 +100,7 @@ bool ProbeTest::start(const ProbeConfig& config) {
     tickets_.clear();
     session_ = esp_random();
     if (!session_) session_ = 1;
-    config_ = config; schedule_.reset(); status_ = {}; started_ = millis();
+    config_ = config; schedule_.reset(); status_ = {}; confirmations_ = 0; started_ = millis();
     if (!listen()) { disableReceiver(); WiFi.mode(WIFI_OFF); status_.phase = ProbePhase::Failed; return false; }
     active_ = true; return true;
 }
@@ -130,11 +133,19 @@ void ProbeTest::endAttempt() {
     server_.stop(); dns_.stop(); WiFi.softAPdisconnect(true);
     if (!listen()) { disableReceiver(); WiFi.mode(WIFI_OFF); active_ = false; status_.phase = ProbePhase::Failed; }
 }
+uint8_t ProbeTest::clients() const {
+    return active_ && schedule_.active() ? WiFi.softAPgetStationNum() : 0;
+}
 void ProbeTest::poll() {
     if (!active_) return;
     const uint32_t now = millis();
     if (schedule_.active()) {
         dns_.processNextRequest(); server_.handleClient();
+        if (finishPending_ && static_cast<int32_t>(millis() - finishAt_) >= 0) {
+            finishPending_ = false;
+            endAttempt();
+            return;
+        }
         if (WiFi.softAPgetStationNum() && schedule_.observeConnection(now)) {
             ++status_.joins; status_.phase = ProbePhase::Notice;
         }

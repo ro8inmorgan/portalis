@@ -2,9 +2,26 @@ Import("env")
 from pathlib import Path
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import zipfile
+
+def check_ui_stack(disassembly, limit=2048):
+    # Native layout tests have desktop-sized stacks. Check the actual Xtensa
+    # frame as well: drawUi runs on every screen in an 8192-byte Arduino task.
+    match = re.search(
+        r"<portalis::drawUi\(m5gfx::M5Canvas&, portalis::ViewModel const&\)>:\s*"
+        r"[0-9a-f]+:\s+[0-9a-f]+\s+entry\s+a1,\s*(0x[0-9a-f]+|[0-9]+)",
+        disassembly,
+    )
+    if not match:
+        raise RuntimeError("Cannot verify drawUi stack frame in the Cardputer object file")
+    frame = int(match.group(1), 0)
+    if frame > limit:
+        raise RuntimeError(f"drawUi stack frame is {frame} bytes (limit {limit}); move large snapshots off the stack")
+    print(f"Portalis: drawUi stack frame {frame} bytes (limit {limit})")
+    return frame
 
 def write_archive(path, entries):
     temporary = path.with_suffix(".zip.tmp")
@@ -23,6 +40,8 @@ def package(source, target, env):
     dist = root / "dist"
     dist.mkdir(exist_ok=True)
     platform = env.PioPlatform()
+    objdump = Path(platform.get_package_dir("toolchain-xtensa-esp32s3")) / "bin/xtensa-esp32s3-elf-objdump"
+    check_ui_stack(subprocess.check_output([str(objdump), "-Cd", str(build / "src/ui.cpp.o")], text=True))
     esptool = Path(platform.get_package_dir("tool-esptoolpy")) / "esptool.py"
     framework = Path(platform.get_package_dir("framework-arduinoespressif32"))
     parts = [(0, build / "bootloader.bin"), (0x8000, build / "partitions.bin"),
@@ -42,7 +61,7 @@ def package(source, target, env):
     shutil.copytree(root / "sd-card", dist / "sd-card", dirs_exist_ok=True)
     manifest = {"image": output.name, "flash_offset": "0x0", "size": len(merged),
                 "sha256": hashlib.sha256(merged).hexdigest(),
-                "target": "Cardputer / Cardputer ADV", "version": "2.0.1"}
+                "target": "Cardputer / Cardputer ADV", "version": "2.1.0"}
     (dist / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     shutil.copyfile(root / "README.txt", dist / "README.txt")
     examples = [(path, path.relative_to(root / "sd-card").as_posix())

@@ -3,6 +3,8 @@
 #include "effects.h"
 #include "radar.h"
 #include "wifi_tools_model.h"
+#include "lan_scan_model.h"
+#include "ssh_model.h"
 #include "probe_model.h"
 #include "carousel.h"
 #include "settings.h"
@@ -10,7 +12,7 @@
 #include <M5GFX.h>
 
 namespace portalis {
-enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, Error };
+enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, RangeSetup, RangeResults, PortSetup, PortResults, ScanInput, SshSetup, SshInput, SshSession, Error };
 struct ViewModel {
     UiSettings settings;
     float carouselPosition = 0;
@@ -26,6 +28,20 @@ struct ViewModel {
     const SignalHistory* signal = nullptr;
     const NetworkChanges* changes = nullptr;
     const NetworkStatus* network = nullptr;
+    const RangeScanStatus* rangeScan = nullptr;
+    const PortScanStatus* portScan = nullptr;
+    const char* rangeStart = "";
+    const char* rangeEnd = "";
+    const char* scanHost = "";
+    const char* scanPortRange = "1-1024";
+    const char* scanInputLabel = "";
+    bool scanBusy = false;
+    const SshConfig* sshConfig = nullptr;
+    const SshStatus* sshStatus = nullptr;
+    const TerminalBuffer* terminal = nullptr;
+    const char* sshInputLabel = "";
+    bool sshInputSecret = false;
+    size_t terminalScroll = 0;
     const char* networkName = "";
     size_t passwordLength = 0;
     bool networkPickerCanJoin = true;

@@ -49,6 +49,27 @@ int main() {
     radar.generation=2;radar.updatedAt=123000;radar.points[0].channel=6;changes.update(radar);
     view.changes=&changes;
     save("changes", Screen::Changes);
+    view.selected=0;view.rangeStart="192.168.1.1";view.rangeEnd="192.168.1.254";
+    view.scanHost="192.168.1.10";view.scanPortRange="1-1024";
+    RangeScanStatus hosts;hosts.phase=ScanPhase::Complete;hosts.checked=hosts.total=254;hosts.found=hosts.count=4;
+    hosts.hosts[0]={0xc0a80101,3};hosts.hosts[1]={0xc0a8010a,7};hosts.hosts[2]={0xc0a8012a,2};hosts.hosts[3]={0xc0a80164,14};
+    PortScanStatus ports;ports.phase=ScanPhase::Complete;ports.host=0xc0a8010a;ports.checked=ports.total=1024;ports.found=ports.count=3;
+    ports.ports[0]=22;ports.ports[1]=80;ports.ports[2]=443;
+    view.rangeScan=&hosts;view.portScan=&ports;
+    save("ip-range-setup",Screen::RangeSetup);view.selected=1;save("ip-range-results",Screen::RangeResults);
+    view.selected=2;save("port-scan-setup",Screen::PortSetup);view.selected=0;save("port-scan-results",Screen::PortResults);
+    SshConfig ssh;ssh.host="192.168.1.10";ssh.user="robin";ssh.auth=SshAuth::PrivateKey;
+    SshStatus sshStatus;TerminalBuffer terminal;
+    view.sshConfig=&ssh;view.sshStatus=&sshStatus;view.terminal=&terminal;view.selected=3;
+    save("ssh-setup",Screen::SshSetup);
+    sshStatus.phase=SshPhase::VerifyHost;
+    std::strcpy(sshStatus.fingerprint,"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    save("ssh-host-key",Screen::SshSession);
+    const std::string shell="Welcome to demo-server\r\n\r\nrobin@demo-server:~$ uname -s\r\nLinux\r\nrobin@demo-server:~$ uptime\r\n 14:32:10 up 3 days, load average: 0.12\r\nrobin@demo-server:~$ ls\r\nprojects  notes  backups\r\nrobin@demo-server:~$ ";
+    terminal.feed(shell.data(),shell.size());sshStatus.phase=SshPhase::Active;save("ssh-terminal",Screen::SshSession);
+    for(const auto& icon: {std::pair<int,const char*>{PortScanHome,"port-scan-icon"},{SettingsHome,"settings-icon"},{SshHome,"ssh-icon"}}) {
+        view.selected=icon.first;view.carouselPosition=icon.first;save(icon.second,Screen::Home);
+    }
     CarouselMotion motion; motion.reset(0,0);
     for (int frame=0; frame<(CarouselMotion::count+1)*30; ++frame) {
         view.now=frame*80;

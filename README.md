@@ -1,13 +1,13 @@
 # Portalis
 
-Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, analyze Wi-Fi channels, track signals, diagnose connections, monitor ping and network changes, and customize the display, RGB LED, and sounds.
+Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, analyze Wi-Fi channels, track signals, diagnose connections, monitor ping and network changes, discover hosts, scan TCP ports, open SSH terminals, and customize the display, RGB LED, and sounds.
 
 ## Screenshots
 
 Rendered from the firmware UI using sample data at the display's 240×135 resolution, enlarged for readability. These are software previews, not photographs of a device.
 
 <p align="center">
-  <img src="docs/screenshots/menu.gif" alt="Nine animated tools: Portal, radar, KARMA, Channels, Signal tracker, Diagnostics, Ping monitor, Network changes, then Settings" width="720">
+  <img src="docs/screenshots/menu.gif" alt="Twelve animated tools including IP range scan, host port scan, SSH terminal, and two rotating Settings gears" width="720">
 </p>
 
 | Live portal dashboard | Wi-Fi radar |
@@ -23,8 +23,16 @@ Rendered from the firmware UI using sample data at the display's 240×135 resolu
 | ![Independent connection checks](docs/screenshots/diagnostics.png) | ![Latency graph and packet loss](docs/screenshots/ping.png) |
 | **Network changes** | **Saved Wi-Fi networks** |
 | ![Observed access-point channel change](docs/screenshots/changes.png) | ![Network picker with a remembered network](docs/screenshots/wifi-picker.png) |
-| **Joining a protected network** | |
-| ![Masked Wi-Fi password entry](docs/screenshots/wifi-join.png) | |
+| **IP range scan setup** | **Discovered hosts** |
+| ![Editable start and end IP addresses](docs/screenshots/ip-range-setup.png) | ![Select a responding host to scan its ports](docs/screenshots/ip-range-results.png) |
+| **Host port scan setup** | **Open TCP ports** |
+| ![Host and TCP port range](docs/screenshots/port-scan-setup.png) | ![Open TCP ports with scan progress](docs/screenshots/port-scan-results.png) |
+| **SSH setup** | **SSH terminal** |
+| ![SSH host username and authentication selection](docs/screenshots/ssh-setup.png) | ![Interactive shell with illustrative output](docs/screenshots/ssh-terminal.png) |
+| **SSH host-key verification** | **Joining a protected network** |
+| ![SHA-256 host-key fingerprint before authentication](docs/screenshots/ssh-host-key.png) | ![Masked Wi-Fi password entry](docs/screenshots/wifi-join.png) |
+| **New Port Scan icon** | **Meshing Settings gears** |
+| ![Socket and probe icon](docs/screenshots/port-scan-icon.png) | ![Large and small counter-rotating gears](docs/screenshots/settings-icon.png) |
 
 ## Install
 
@@ -42,7 +50,7 @@ The AP is local and does not provide internet access. Broadcasting starts only w
 
 ## What you can do
 
-Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → Settings**. Settings is last.
+Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → IP range scan → Host port scan → SSH terminal → Settings**. Settings is last.
 
 ### Portal
 
@@ -65,7 +73,7 @@ The scanner lists access points, not connected client devices. Scanning and port
 
 ### Join and remember Wi-Fi networks
 
-Diagnostics and Ping need a network connection. Choose a visible network in the picker and enter its password; open networks connect directly. Successfully joined networks are saved automatically and marked with `*` in the picker. Selecting one reconnects with its stored password.
+Diagnostics, Ping, IP range scan, Host port scan, and SSH need a network connection. Choose a visible network in the picker and enter its password; open networks connect directly. Successfully joined networks are saved automatically and marked with `*` in the picker. Selecting one reconnects with its stored password.
 
 - Remembers up to **five networks**, with the oldest profile replaced when full.
 - Password entry is masked. Failed joins do not overwrite saved credentials.
@@ -74,7 +82,7 @@ Diagnostics and Ping need a network connection. Choose a visible network in the 
 - Supports visible open and personal WPA/WPA2/WPA3 networks. Hidden SSID entry, WEP, and enterprise authentication are not implemented.
 - Joining/address assignment has a **30-second timeout**. A disconnect is shown explicitly.
 
-The radio is dedicated to the selected mode. Diagnostics/Ping cannot run alongside a portal or passive scan. Leaving disconnects from the network; if a DNS check is in progress, cleanup may take about 15 seconds while the UI remains responsive.
+The radio is dedicated to the selected mode. Connected network tools cannot run alongside a portal or passive scan. Leaving disconnects from the network; if a DNS check is in progress, cleanup may take about 15 seconds while the UI remains responsive.
 
 ### Channel analyzer
 
@@ -129,12 +137,57 @@ Hostname targets are not implemented; use a numeric IPv4 address. An unanswered 
 
 This mode compares the strongest 32 APs. “Seen” and “Not seen” describe scan observations, not proof that a network was created or shut down. It does not require joining a network and does not save its event log to SD.
 
+### IP range scan
+
+- Join a Wi-Fi network, edit **From** and **To**, then select **Start scan**.
+- Defaults to usable addresses in the connected subnet, or the device's local `/24` on larger subnets.
+- Scans up to **256 IPv4 addresses**, inclusively, using one ICMP echo per address with a **350 ms** timeout.
+- Shows progress, discovered hosts, and response times. Results stay in RAM.
+- Select a host with **`;` / `.`** and press **Enter** to open its port-scan setup. The active range scan stops and its result list is preserved.
+- **S** stops the scan and keeps partial results; **Esc** returns to setup.
+
+Devices that filter or miss the ping may not appear. An empty result does not prove the range has no devices. You can enter a host directly in Host port scan without discovering it first.
+
+### Host port scan
+
+- Available from its own main-menu icon or from a discovered IP.
+- Enter a host IPv4 address and a TCP range such as **1–1024**, or a single port such as **443**.
+- Defaults to **1–1024**; supports ports **1–65535**.
+- Tries TCP connections with a **250 ms** timeout and immediately closes them; sends no application payload and does not scan UDP.
+- Shows progress and open ports. Keeps the first **256 open-port results** and reports the total found if more are open.
+- **S** cancels with partial results; **Esc** returns to setup. From a discovered host, **Esc** from port setup returns to the original host list.
+
+A filtered full-range scan can take hours. Both scans stay responsive, stop on Wi-Fi loss, and operate only after you explicitly choose Start scan.
+
+### SSH terminal
+
+Open **SSH terminal** from the main menu and join Wi-Fi. Set **Host**, **Port** (default 22), **User**, and **Auth**, then choose **Connect**.
+
+- **Password:** enter the account password in the masked Password field.
+- **Private key:** place your OpenSSH/PEM private key on SD (default `/ssh/id_ed25519`), set its absolute path, and enter its passphrase if encrypted. Key files are limited to **16 KB**. Key-format and encryption support follows the pinned [LibSSH-ESP32 5.10.0 library](https://github.com/ewpa/LibSSH-ESP32).
+- Before authentication, the device displays the server's **SHA-256 host-key fingerprint in hexadecimal**. Compare it with a trusted fingerprint for that server. **Enter** trusts it for this connection; **Esc** rejects it. Host keys are not silently accepted or permanently stored.
+- Passwords and passphrases are not saved to NVS or SD. They are cleared from the application's buffers after authentication or cancellation. Your private-key file remains on the SD card.
+- Supports hostnames and numeric IPv4 addresses, password authentication, and private-key authentication. Keyboard-interactive/MFA prompts are not implemented.
+- The shell uses a **40-column × 14-row** PTY with a basic ASCII/VT100-style display and **96 lines of scrollback**. Cursor movement, line clearing, wrapping, and common escape sequences work; color styling is ignored, non-ASCII characters are replaced, and full-screen application compatibility is limited.
+- SSH negotiation and I/O run outside the UI task. Connection/authentication failures and remote closure are displayed; a failed memory allocation does not start a session.
+
+| Terminal key | Action |
+| --- | --- |
+| Enter / Backspace / Tab | Send Return / Delete / Tab |
+| Ctrl + letter | Send control character, including Ctrl+C and Ctrl+D |
+| Ctrl + `;` / `.` / `,` / `/` | Send Up / Down / Left / Right |
+| Backtick-labelled Esc | Send Escape to the remote shell |
+| Fn + `;` / `.` | Scroll local history up/down |
+| Fn + Backspace | Disconnect SSH and return to its setup menu |
+
+Leaving SSH setup disconnects Wi-Fi. Terminal output is held in RAM and is not written to SD. Remote commands run only when you type and submit them.
+
 ### KARMA / probe test
 
 - Listen for named Wi-Fi probe requests and temporarily advertise the requested network name.
 - Choose an SD HTML template before starting; there is no automatic built-in page for this mode.
 - Capture feedback through the same form handler and SD submission viewer as Portal.
-- Set the total AP lifetime before starting: **30–600 seconds**, in 30-second steps, default **120 seconds**. Joining does not restart the countdown.
+- Set the AP timeout before starting: **30–600 seconds**, in 30-second steps, default **120 seconds**. The first observed connection restarts the full countdown; further connections do not.
 - Apply a per-device cooldown between attempts; default **120 seconds**.
 - View attempt and join counts, a remaining-time countdown, and the latest 32 test results.
 - Remember the selected template and menu timeout across reboots.
@@ -193,7 +246,7 @@ The Wi-Fi network is open and SD logs are unencrypted. Use feedback forms approp
 - Feedback uses the configured connection, confirmation, and disconnect colors. Portal confirmations take priority over navigation pulses. Settings color previews remain available.
 - **Off** or **0% brightness** disables all LED output, including activity feedback.
 - Live LED previews in Settings, including while the portal is stopped.
-- Menu click sounds and separate connection, confirmation, and disconnect chimes.
+- Menu click sounds and separate connection, confirmation, and disconnect chimes in both Portal and KARMA. Successful submission saves trigger the confirmation chime.
 - Independent menu/event sound toggles and volume from 0–100%.
 - Device settings persist across reboots without needing an SD card.
 
@@ -203,7 +256,7 @@ On Cardputer ADV, LED power shares the display-backlight pin: enabled LED effect
 
 | Screen | Keys |
 | --- | --- |
-| Main menu | `,` / `/` move between all nine icons; Enter opens; Settings is last |
+| Main menu | `,` / `/` move between all twelve icons; Enter opens; Settings is last |
 | Menus | `;` / `.` move; Enter selects; Esc/back returns |
 | Template picker | Enter opens; Backspace goes up; `R` remounts SD |
 | Portal dashboard | `S` submissions; `H` history; `C` settings; `X` stop confirmation |
@@ -214,6 +267,11 @@ On Cardputer ADV, LED power shares the display-backlight pin: enabled LED effect
 | Diagnostics | `R` rechecks; Esc disconnects |
 | Ping monitor | `T` target; `P` pause/resume; `R` reset; Esc disconnects |
 | Network changes | `;` / `.` browse; `C` clear; `R` scan; Esc exits |
+| IP range / port setup | `;` / `.` select field; Enter edits or starts; Esc returns/disconnects |
+| Range results | `;` / `.` select host; Enter opens port setup; `S` stops; Esc returns |
+| Port results | `;` / `.` scroll; `S` stops; Esc returns |
+| SSH setup | `;` / `.` select; Enter edits/toggles/connects; Esc disconnects Wi-Fi |
+| SSH terminal | Type commands; Ctrl combos; Fn+Backspace exits; see terminal controls above |
 | KARMA setup | Page selects HTML; Timeout adjusts with `,` / `/` or Enter (+30s); Start begins |
 | KARMA shortcuts | `S` start/stop; `T` templates while stopped; `V` submissions; `H` log; `R` reload while stopped |
 | Settings | `;` / `.` select; `,` / `/` adjust; Esc/Backspace saves |
@@ -236,7 +294,7 @@ Fresh installations create `/portalis.json` with:
 
 - `ap_names`: up to 32 presets, each 1–32 printable ASCII characters, without leading/trailing spaces. Manual naming remains available.
 - `cooldown_seconds`: 60–86400 seconds between attempts for a device.
-- `timeout_seconds`: 30–600 seconds total lifetime for each temporary AP.
+- `timeout_seconds`: 30–600 seconds for each temporary AP, restarted once on the first observed connection.
 - `notice_template`: optional absolute path to a probe HTML file, such as `/feedback.html`. Empty means choose a file before starting.
 
 The config is limited to 4 KB. Existing files are preserved. Saved KARMA menu selections override the config's template and timeout. Every start reloads the selected HTML file.
@@ -254,7 +312,7 @@ uvx --with requests --from platformio pio test -e native
 
 Dependencies are pinned in `platformio.ini`. The flashable output is `dist/portalis.bin`. Local builds also produce an application-only image, manifests, and ZIP packages for development; only the full image is uploaded to releases.
 
-**Known validation limitations:** the v2.0.1 build succeeds, with 72 native tests passing. Two existing `test_probe_scope` tests fail because they expect an SSID restriction that the current implementation does not enforce. Physical-device testing is still needed to validate all features.
+**Validation:** firmware builds include a guard limiting the compiled UI stack frame to 2 KB, addressing the main-menu restart regression introduced during scan development. Native tests cover scanner state, terminal parsing, authentication flow, cancellation, and UI bounds; the SSH transport is mocked in native tests. The current full run has **84 passing tests and four failing probe assertions**: two legacy `test_probe_scope` tests expect an SSID restriction that the current implementation does not enforce, and two `test_probe` deadline tests expect the timer not to restart on the first join. The scanner, SSH, and UI suites pass. Physical-device scanning, SSH interoperability, and speaker behavior still need hardware validation.
 
 To regenerate the previews after building dependencies:
 

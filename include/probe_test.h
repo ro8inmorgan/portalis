@@ -21,6 +21,7 @@ class ProbeTest {
     TicketGate tickets_;
     std::function<bool(Event, const std::string&)> onFeedback_;
     uint32_t session_ = 0;
+    uint32_t confirmations_ = 0;
     void securityHeaders(const std::string& nonce = "");
     void sendPage();
     ProbeSchedule schedule_;
@@ -38,6 +39,11 @@ public:
     void stop();
     void poll();
     bool running() const { return active_; }
+    uint8_t clients() const;
+    uint32_t count() const { return confirmations_; }
+    uint32_t session() const { return session_; }
     const ProbeStatus& status() const { return status_; }
+    bool finishPending_ = false;
+    uint32_t finishAt_ = 0;
 };
 } // namespace portalis
