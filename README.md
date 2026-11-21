@@ -1,6 +1,6 @@
 # Portalis
 
-Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, analyze Wi-Fi channels, track signals, diagnose connections, monitor ping and network changes, discover hosts, scan TCP ports, open SSH terminals, capture packets to SD for Wireshark, run MicroPython scripts from SD, and customize the display, RGB LED, and sounds.
+A WIFI, networking, pentesting toolset firmware for the Cardputer Adv to test, diagnose and learn about your own network environment
 
 ## Screenshots
 
