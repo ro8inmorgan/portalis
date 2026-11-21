@@ -1,4 +1,4 @@
-PORTALIS 2.1.0 — Cardputer / Cardputer ADV
+PORTALIS 2.2.0 — Cardputer / Cardputer ADV
 
 A standalone local Wi-Fi connection demo with a readable 240x135 interface.
 No internet uplink is required. Nothing starts broadcasting until you choose Start.
@@ -318,3 +318,25 @@ SSH TERMINAL
   Esc sends Escape while connected. Colors are ignored; full-screen apps and
   Unicode are not fully supported. Keyboard-interactive/MFA is not supported.
   See README.md for details and current validation limits.
+
+PACKET CAPTURE
+  Open Packet capture, select a permitted 2.4 GHz channel, and Start capture.
+  Saves /captures/cap-XXXXXXXX.pcap on SD; open this file in Wireshark on a PC.
+  Radiotap records channel and signal strength. Wi-Fi payloads stay encrypted.
+  Capture uses a fixed channel and an eight-packet queue; drops are displayed.
+  Stops at 32 MiB. Enter/S/Esc stops and drains queued writes; wait for SAVED
+  before removing SD. SD errors/power loss can leave an incomplete final record.
+  Timestamps are relative to capture start; use Wireshark Seconds Since
+  Beginning of Capture. Frames over 2500 bytes are truncated.
+
+PYTHON SCRIPTS
+  Copy sd-card/scripts to /scripts on SD. Open Python scripts, select a .py
+  file and press Enter. MicroPython v1.27.0 runs locally in Portalis.
+  Print/input, math, gc, sys and time.sleep/sleep_ms/ticks_ms are supported.
+  Esc or Ctrl+C aborts a run; Esc afterward returns. Fn+up/down scrolls output.
+  32 KiB source limit, 64 KiB Python heap, 16 KiB worker stack; fresh state
+  each run. The picker lists the first 64 files in /scripts, not subfolders.
+  This embedded port has no pip, filesystem open(), imports of other scripts,
+  machine/network/M5 APIs, native .mpy code, or threads. Stop may skip finally.
+  Python cannot run alongside the Wi-Fi tools. Physical-device testing remains
+  necessary; host runtime tests do not establish behavior on the ESP32-S3.

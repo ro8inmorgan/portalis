@@ -15,3 +15,4 @@ inline int xQueueReceive(QueueHandle_t queue,void* value,int) {
     std::memcpy(value,queue->items.front().data(),queue->size);queue->items.pop_front();return pdTRUE;
 }
 inline void xQueueReset(QueueHandle_t queue) { queue->items.clear(); }
+inline void vQueueDelete(QueueHandle_t queue) { delete queue; }

@@ -382,4 +382,30 @@ void test_ssh_screens_fit_and_password_is_masked() {
     }
     TEST_ASSERT_EQUAL(0,canvas.violations);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_ssh_screens_fit_and_password_is_masked); RUN_TEST(test_lan_scan_screens_and_main_menu_icons_fit); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }
+void test_capture_screens_and_icon_fit() {
+    M5Canvas canvas;ViewModel view;CaptureStatus state;view.capture=&state;
+    view.screen=Screen::CaptureSetup;
+    for(int channel:{1,13}) for(int row:{0,1}) {view.captureChannel=channel;view.selected=row;drawUi(canvas,view);}
+    state.channel=13;state.packets=UINT32_MAX;state.dropped=UINT32_MAX;state.bytes=pcap::fileLimit;state.seconds=360000;
+    std::strcpy(state.path,"/captures/cap-01234567.pcap");std::strcpy(state.message,"SD write failed; file may be partial");
+    for(auto phase:{CapturePhase::Capturing,CapturePhase::Saving,CapturePhase::Saved,CapturePhase::Failed}) {
+        state.phase=phase;view.screen=Screen::CaptureLive;drawUi(canvas,view);
+    }
+    view.screen=Screen::Home;view.selected=CaptureHome;view.carouselPosition=CaptureHome;
+    for(uint32_t now=0;now<3000;now+=100) {view.now=now;drawUi(canvas,view);}
+    TEST_ASSERT_EQUAL(0,canvas.violations);
+}
+void test_python_picker_and_output_fit() {
+    M5Canvas canvas;ViewModel view;ScriptCatalog scripts;PythonStatus status;TerminalBuffer terminal;
+    view.scripts=&scripts;view.python=&status;view.pythonTerminal=&terminal;view.screen=Screen::PythonScripts;drawUi(canvas,view);
+    scripts.count=64;scripts.limited=true;for(auto& name:scripts.names) name=std::string(70,'s')+".py";
+    for(int selected:{0,3,63}) {view.selected=selected;drawUi(canvas,view);}
+    std::strcpy(status.name,"a-long-python-script-name.py");std::strcpy(status.message,"Not enough memory for Python task");
+    for(auto phase:{PythonPhase::Running,PythonPhase::Stopping,PythonPhase::Done,PythonPhase::Failed,PythonPhase::Stopped}) {
+        status.phase=phase;view.screen=Screen::PythonOutput;drawUi(canvas,view);
+    }
+    view.screen=Screen::Home;view.selected=PythonHome;view.carouselPosition=PythonHome;
+    for(uint32_t now=0;now<3000;now+=100) {view.now=now;drawUi(canvas,view);}
+    TEST_ASSERT_EQUAL(0,canvas.violations);
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_python_picker_and_output_fit); RUN_TEST(test_capture_screens_and_icon_fit); RUN_TEST(test_ssh_screens_fit_and_password_is_masked); RUN_TEST(test_lan_scan_screens_and_main_menu_icons_fit); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }

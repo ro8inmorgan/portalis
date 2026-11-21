@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -7,6 +8,7 @@
 #include "SPI.h"
 constexpr int CARD_NONE = 0;
 constexpr const char* FILE_APPEND = "a";
+inline size_t fakeWriteLimit=static_cast<size_t>(-1);
 struct Node { std::string path, content; bool directory = false; std::vector<std::shared_ptr<Node>> children; };
 class File {
     std::shared_ptr<Node> node_;
@@ -23,7 +25,7 @@ public:
     int available() const { return node_ && pos_ < node_->content.size(); }
     int read() { return available() ? static_cast<unsigned char>(node_->content[pos_++]) : -1; }
     size_t readBytes(char* out, size_t n) { size_t count = 0; while (count < n && available()) out[count++] = read(); return count; }
-    size_t write(const uint8_t* in, size_t n) { if (!node_) return 0; node_->content.append(reinterpret_cast<const char*>(in), n); return n; }
+    size_t write(const uint8_t* in, size_t n) { if (!node_) return 0; n=std::min(n,fakeWriteLimit); node_->content.append(reinterpret_cast<const char*>(in), n); return n; }
     size_t print(const char* in) { return write(reinterpret_cast<const uint8_t*>(in), strlen(in)); }
     void flush() {} void close() { node_.reset(); }
 };

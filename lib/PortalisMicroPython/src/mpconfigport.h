@@ -1,0 +1,27 @@
+#pragma once
+#include <port/mpconfigport_common.h>
+#define MICROPY_CONFIG_ROM_LEVEL (MICROPY_CONFIG_ROM_LEVEL_CORE_FEATURES)
+#define MICROPY_ENABLE_COMPILER (1)
+#define MICROPY_ENABLE_GC (1)
+#define MICROPY_GC_ALLOC_THRESHOLD (0)
+#define MICROPY_ENABLE_FINALISER (0)
+#define MICROPY_PY_GC (1)
+#define MICROPY_PY_SYS (1)
+#define MICROPY_PY_SYS_STDFILES (0)
+#define MICROPY_PY_IO (0)
+#define MICROPY_PY_BUILTINS_INPUT (1)
+#define MICROPY_PY_BUILTINS_FLOAT (1)
+#define MICROPY_FLOAT_IMPL (MICROPY_FLOAT_IMPL_FLOAT)
+#define MICROPY_LONGINT_IMPL (MICROPY_LONGINT_IMPL_MPZ)
+#define MICROPY_STACK_CHECK (1)
+#define MICROPY_NLR_SETJMP (1)
+#define MICROPY_GCREGS_SETJMP (1)
+#define MICROPY_ENABLE_SCHEDULER (0)
+#define MICROPY_PERSISTENT_CODE_LOAD (0)
+#define MICROPY_PY_BUILTINS_HELP (0)
+#define MICROPY_HW_BOARD_NAME "Portalis Cardputer"
+#define MICROPY_HW_MCU_NAME "ESP32-S3"
+void portalis_mp_hook(void);
+#define MICROPY_VM_HOOK_LOOP portalis_mp_hook();
+#define MICROPY_VM_HOOK_RETURN portalis_mp_hook();
+#define mp_hal_readline portalis_mp_readline

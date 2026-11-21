@@ -2,7 +2,8 @@
 #include <cstdint>
 #include <cstring>
 #include <vector>
-constexpr int ESP_OK=0, ESP_PING_PROF_TIMEGAP=1, ESP_PING_COUNT_INFINITE=0;
+#include "esp_err.h"
+constexpr int ESP_PING_PROF_TIMEGAP=1, ESP_PING_COUNT_INFINITE=0;
 struct ip_addr_t { uint32_t value=0; };
 struct FakePing;
 using esp_ping_handle_t=FakePing*;

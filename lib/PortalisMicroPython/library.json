@@ -1,0 +1,9 @@
+{
+  "name": "PortalisMicroPython",
+  "version": "1.27.0",
+  "build": {
+    "flags": [
+      "-DNDEBUG"
+    ]
+  }
+}

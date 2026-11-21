@@ -5,6 +5,8 @@
 #include "wifi_tools_model.h"
 #include "lan_scan_model.h"
 #include "ssh_model.h"
+#include "packet_capture_model.h"
+#include "python_model.h"
 #include "probe_model.h"
 #include "carousel.h"
 #include "settings.h"
@@ -12,7 +14,7 @@
 #include <M5GFX.h>
 
 namespace portalis {
-enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, RangeSetup, RangeResults, PortSetup, PortResults, ScanInput, SshSetup, SshInput, SshSession, Error };
+enum class Screen { Splash, Home, Setup, Settings, Names, Name, Templates, Live, Stop, History, Submissions, Submission, Radar, ScanList, Probe, ProbeScope, ProbeHistory, Channels, ToolNetworks, Signal, Changes, NetworkPassword, Diagnostics, Ping, PingTarget, NetworkStopping, RangeSetup, RangeResults, PortSetup, PortResults, ScanInput, SshSetup, SshInput, SshSession, CaptureSetup, CaptureLive, PythonScripts, PythonOutput, Error };
 struct ViewModel {
     UiSettings settings;
     float carouselPosition = 0;
@@ -36,6 +38,12 @@ struct ViewModel {
     const char* scanPortRange = "1-1024";
     const char* scanInputLabel = "";
     bool scanBusy = false;
+    const ScriptCatalog* scripts = nullptr;
+    const PythonStatus* python = nullptr;
+    const TerminalBuffer* pythonTerminal = nullptr;
+    size_t pythonScroll = 0;
+    const CaptureStatus* capture = nullptr;
+    uint8_t captureChannel = 1;
     const SshConfig* sshConfig = nullptr;
     const SshStatus* sshStatus = nullptr;
     const TerminalBuffer* terminal = nullptr;

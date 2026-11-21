@@ -1,13 +1,13 @@
 # Portalis
 
-Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, analyze Wi-Fi channels, track signals, diagnose connections, monitor ping and network changes, discover hosts, scan TCP ports, open SSH terminals, and customize the display, RGB LED, and sounds.
+Wi-Fi captive portal firmware for **M5Stack Cardputer and Cardputer ADV**. Serve your own HTML pages, collect feedback on SD, browse submissions on the device, analyze Wi-Fi channels, track signals, diagnose connections, monitor ping and network changes, discover hosts, scan TCP ports, open SSH terminals, capture packets to SD for Wireshark, run MicroPython scripts from SD, and customize the display, RGB LED, and sounds.
 
 ## Screenshots
 
 Rendered from the firmware UI using sample data at the display's 240×135 resolution, enlarged for readability. These are software previews, not photographs of a device.
 
 <p align="center">
-  <img src="docs/screenshots/menu.gif" alt="Twelve animated tools including IP range scan, host port scan, SSH terminal, and two rotating Settings gears" width="720">
+  <img src="docs/screenshots/menu.gif" alt="Fourteen animated tools including IP range scan, host port scan, SSH terminal, packet capture, MicroPython scripts, and two rotating Settings gears" width="720">
 </p>
 
 | Live portal dashboard | Wi-Fi radar |
@@ -33,14 +33,20 @@ Rendered from the firmware UI using sample data at the display's 240×135 resolu
 | ![SHA-256 host-key fingerprint before authentication](docs/screenshots/ssh-host-key.png) | ![Masked Wi-Fi password entry](docs/screenshots/wifi-join.png) |
 | **New Port Scan icon** | **Meshing Settings gears** |
 | ![Socket and probe icon](docs/screenshots/port-scan-icon.png) | ![Large and small counter-rotating gears](docs/screenshots/settings-icon.png) |
+| **Packet capture setup** | **Live capture** |
+| ![Channel selection and capture start](docs/screenshots/capture-setup.png) | ![Packet counts and SD capture filename](docs/screenshots/capture-live.png) |
+| **Python script picker** | **MicroPython output** |
+| ![Choose a Python script from SD](docs/screenshots/python-scripts.png) | ![Python output on the Cardputer](docs/screenshots/python-output.png) |
 
 ## Install
+
+**New in v2.2.0:** save raw Wi-Fi captures to SD for Wireshark and run MicroPython scripts directly on the Cardputer.
 
 Download **[portalis.bin from the latest release](https://github.com/ro8inmorgan/portalis/releases/latest)** and flash it at **`0x0`**. It is the complete image: bootloader, partition table, and application. Back up any existing firmware/settings first.
 
 Releases contain only `portalis.bin` plus GitHub's automatic source-code ZIP and tar.gz downloads. You do not need a separate application binary.
 
-1. Insert a FAT32 SD card for custom HTML pages and saved form submissions.
+1. Insert a FAT32 SD card for custom HTML pages, saved form submissions, packet captures, and Python scripts.
 2. On a blank writable card, Portalis creates `/portalis.json` with the default settings.
 3. Copy your HTML files to the card, or use the optional [example templates](sd-card). The normal Portal mode also has a built-in Aurora page.
 4. Open **Portal**, choose an AP name and page, then select **Start portal**.
@@ -48,9 +54,11 @@ Releases contain only `portalis.bin` plus GitHub's automatic source-code ZIP and
 
 The AP is local and does not provide internet access. Broadcasting starts only when you choose Start.
 
+For Python, copy the [example scripts](sd-card/scripts) into `/scripts` on the SD card and open **Python scripts**. For packet capture, open **Packet capture**, select a channel, and start recording; saved `.pcap` files appear in `/captures`.
+
 ## What you can do
 
-Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → IP range scan → Host port scan → SSH terminal → Settings**. Settings is last.
+Each tool has its own animated main-menu icon: **Portal → Wi-Fi radar → KARMA → Channels → Signal tracker → Diagnostics → Ping monitor → Network changes → IP range scan → Host port scan → SSH terminal → Packet capture → Python scripts → Settings**. Settings is last.
 
 ### Portal
 
@@ -182,6 +190,47 @@ Open **SSH terminal** from the main menu and join Wi-Fi. Set **Host**, **Port** 
 
 Leaving SSH setup disconnects Wi-Fi. Terminal output is held in RAM and is not written to SD. Remote commands run only when you type and submit them.
 
+### Packet capture / Wireshark
+
+Open **Packet capture** from its main-menu icon, select a channel with **`,` / `/`** (or Enter on Channel), then choose **Start capture**. Insert a FAT32 SD card first. This is a separate passive radio mode; it does not join a network or run alongside the other Wi-Fi tools.
+
+- Captures management, control, and data frames on **one selected 2.4 GHz channel**, including observable exchanges between nearby devices and their access point—not just traffic addressed to the Cardputer. This does not guarantee visibility of every device or every packet on the network. Channels 1–13 are selectable; the driver's current country configuration must permit the selected channel. There is no channel hopping or 5 GHz capture.
+- Writes unique **`/captures/cap-XXXXXXXX.pcap`** files without overwriting existing captures. The PCAP contains Radiotap channel, signal strength, and FCS metadata, with up to **2,500 bytes per Wi-Fi frame**; larger frames are marked truncated.
+- Shows saved packets, dropped packets, elapsed time, file size, and filename. A bounded eight-packet queue feeds a separate SD writer task; busy traffic or slow cards can cause drops. These counters describe frames delivered by the ESP32, not all frames transmitted over the air.
+- **Enter**, **S**, or **Esc** stops reception, drains queued packets, and closes the file. Wait for **SAVED** before removing the SD card, then press Enter/Esc to return. Capture also stops at **32 MiB**. An SD write failure displays an error; the last record may be incomplete.
+- Files are flushed about once per second and on Stop. Power loss or card removal while recording can lose buffered data or leave a partial file.
+- Copy the `.pcap` file to your PC and use **Wireshark → File → Open**. Examples of display filters are `wlan`, `wlan.addr == aa:bb:cc:dd:ee:ff`, and `wlan.fc.type == 2` (data frames).
+- Timestamps are microseconds elapsed since capture started, not wall-clock dates. In Wireshark choose **View → Time Display Format → Seconds Since Beginning of Capture**.
+- Encrypted Wi-Fi payloads remain encrypted; this is raw capture, not automatic decryption or a full Wireshark interface on the device.
+
+The format was checked with a desktop packet decoder using a synthetic beacon. Native tests cover PCAP/Radiotap encoding, truncation, overflow, SD failure, stop/drain, and UI bounds; real capture throughput and RF behavior still need testing on a Cardputer.
+
+### Python scripts / MicroPython
+
+Put single-file **`.py` scripts in `/scripts` on SD**, then open **Python scripts** from the main menu. Select a file with **`;` / `.`** and press **Enter** to run it directly on the Cardputer. No PC, SSH connection, or internet is needed. Copy the examples from [`sd-card/scripts`](sd-card/scripts) to get started.
+
+- Embeds the official [MicroPython v1.27.0 core](https://github.com/micropython/micropython/tree/v1.27.0/ports/embed) within Portalis. It does not replace the firmware with standalone MicroPython.
+- Supports Python functions, classes, loops, lists/dictionaries, comprehensions, integers, floating-point arithmetic, `print()`, and `input()`. Built-in modules include `math`, `gc`, and `sys`. The small `time` module provides `sleep()`, `sleep_ms()`, and `ticks_ms()` (device uptime in milliseconds).
+- The picker sorts filenames and shows the first **64** `.py` files directly inside `/scripts`; filenames are limited to **80 bytes** and scripts to **32 KiB**. Press **R** to remount SD and refresh.
+- Each run gets a fresh interpreter with a **64 KiB Python heap** and a separate **16 KiB task stack**, with recursion checking. Memory allocation failures and Python exceptions are displayed instead of starting another script.
+- Output and tracebacks appear in a **40×14** terminal with **96 lines of scrollback**. **Fn + `;` / `.`** scrolls history. When the header says **INPUT**, type your response (up to 255 ASCII characters), use Backspace to edit, and Enter to submit.
+- **Esc** or **Ctrl+C** stops a running script; Esc after completion returns to the picker. Stop aborts the run at a VM/I/O checkpoint and discards its state, so Python exception handlers and `finally` blocks are not guaranteed to run. This also stops scripts that catch `BaseException`. Sleeping, input waits, and output backpressure remain cancellable.
+- Python runs separately from the Wi-Fi tools. No scripts run automatically at boot. Source is read from SD once; output is kept in RAM.
+- This is an embedded, single-file scripting environment: **no pip, desktop packages, `open()`/SD filesystem binding, imports of other `.py` files, `machine`, `network`, or M5 hardware APIs** in this version. Native `.mpy` extensions and Python threads are disabled. Display output is basic ASCII and long output scrolls off the bounded history.
+
+For example, save this as `/scripts/demo.py`:
+
+```python
+import time
+
+name = input("Your name? ")
+for number in range(5):
+    print(name, number)
+    time.sleep_ms(250)
+```
+
+The MicroPython source package is vendored under `lib/PortalisMicroPython`, including its MIT license and pinned upstream revision. The port configuration and generator are under `scripts/micropython_port` and `scripts/vendor_micropython.py`; normal firmware builds do not regenerate or download the runtime source.
+
 ### KARMA / probe test
 
 - Listen for named Wi-Fi probe requests and temporarily advertise the requested network name.
@@ -256,7 +305,7 @@ On Cardputer ADV, LED power shares the display-backlight pin: enabled LED effect
 
 | Screen | Keys |
 | --- | --- |
-| Main menu | `,` / `/` move between all twelve icons; Enter opens; Settings is last |
+| Main menu | `,` / `/` move between all fourteen icons; Enter opens; Settings is last |
 | Menus | `;` / `.` move; Enter selects; Esc/back returns |
 | Template picker | Enter opens; Backspace goes up; `R` remounts SD |
 | Portal dashboard | `S` submissions; `H` history; `C` settings; `X` stop confirmation |
@@ -308,11 +357,12 @@ With [uv](https://docs.astral.sh/uv/) installed, run from the project directory:
 ```sh
 uvx --with requests --with intelhex --from platformio pio run -e cardputer
 uvx --with requests --from platformio pio test -e native
+python3 scripts/test_python_runtime.py
 ```
 
 Dependencies are pinned in `platformio.ini`. The flashable output is `dist/portalis.bin`. Local builds also produce an application-only image, manifests, and ZIP packages for development; only the full image is uploaded to releases.
 
-**Validation:** firmware builds include a guard limiting the compiled UI stack frame to 2 KB, addressing the main-menu restart regression introduced during scan development. Native tests cover scanner state, terminal parsing, authentication flow, cancellation, and UI bounds; the SSH transport is mocked in native tests. The current full run has **84 passing tests and four failing probe assertions**: two legacy `test_probe_scope` tests expect an SSID restriction that the current implementation does not enforce, and two `test_probe` deadline tests expect the timer not to restart on the first join. The scanner, SSH, and UI suites pass. Physical-device scanning, SSH interoperability, and speaker behavior still need hardware validation.
+**Validation:** firmware builds include a guard limiting the compiled UI stack frame to 2 KB, addressing the main-menu restart regression introduced during scan development. Native tests cover scanner state, terminal parsing, authentication flow, cancellation, and UI bounds; the SSH transport is mocked in native tests. The current full run has **94 passing tests and four failing probe assertions**: two legacy `test_probe_scope` tests expect an SSID restriction that the current implementation does not enforce, and two `test_probe` deadline tests expect the timer not to restart on the first join. The scanner, SSH, Python runner, and UI suites pass. The Python runner lifecycle tests mock the VM, while `python3 scripts/test_python_runtime.py` independently compiles the real embedded MicroPython core and checks execution, input, exceptions, memory/recursion limits, GC, cancellation, and fresh-run isolation. The separate runtime check passed **12 real-MicroPython checks and all three sample scripts**. Physical-device scanning/capture, sustained SD throughput, SSH interoperability, speaker behavior, and MicroPython on-device behavior still need hardware validation.
 
 To regenerate the previews after building dependencies:
 

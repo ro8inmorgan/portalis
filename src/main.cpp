@@ -9,6 +9,8 @@
 #include "network_tools.h"
 #include "lan_scanner.h"
 #include "ssh_terminal.h"
+#include "packet_capture.h"
+#include "python_runner.h"
 #include "wifi_profiles.h"
 #include "probe_test.h"
 
@@ -19,6 +21,10 @@ WifiScanner scanner;
 NetworkTools networkTools;
 LanScanner lanScanner;
 SshTerminal sshTerminal;
+PacketCapture packetCapture;
+PythonRunner pythonRunner;
+size_t pythonScroll=0;
+uint8_t captureChannel=1;
 SshConfig sshConfig;
 int sshField=0;
 size_t terminalScroll=0;
@@ -231,8 +237,53 @@ void handleKey(char key) {
                     if (scanner.start()) show(Screen::Radar);
                     else notice("Stop the portal before scanning Wi-Fi.", Screen::Home);
                 } else if (selected == 2) { show(Screen::Probe); reloadProbeConfig(); }
+                else if (selected == PythonHome) {
+                    if(portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy() || packetCapture.busy()) {
+                        notice("Stop the active tool first.",Screen::Home);break;
+                    }
+                    scanner.stop();storage.begin();pythonRunner.refresh();show(Screen::PythonScripts);
+                }
+                else if (selected == CaptureHome) show(Screen::CaptureSetup);
                 else if (selected == SettingsHome) openSettings(Screen::Home);
                 else openWifiTool(selected);
+            }
+            break;
+        case Screen::PythonScripts:
+            if(escape || back) openHome(PythonHome);
+            else if(key=='r' || key=='R') {storage.begin();pythonRunner.refresh();selected=0;}
+            else if(up && selected>0) --selected;
+            else if(down && selected+1<static_cast<int>(pythonRunner.scripts().count)) ++selected;
+            else if(enter && selected>=0 && selected<static_cast<int>(pythonRunner.scripts().count)) {
+                pythonRunner.start(pythonRunner.scripts().names[selected]);pythonScroll=0;show(Screen::PythonOutput);
+            }
+            break;
+        case Screen::PythonOutput:
+            if(escape) {if(pythonRunner.busy()) pythonRunner.stop();else show(Screen::PythonScripts);}
+            else if(pythonRunner.busy()) {
+                if(enter) pythonRunner.send('\r');
+                else if(back) pythonRunner.send('\b');
+                else if(key>=32 && key<127) {pythonRunner.send(key);pythonScroll=0;}
+            }
+            break;
+        case Screen::CaptureSetup:
+            if (escape || back) openHome(CaptureHome);
+            else if (up || down) selected=1-selected;
+            else if ((key==',' || key=='/') && selected==0)
+                captureChannel=1+(captureChannel-1+(key==',' ? 12 : 1))%13;
+            else if (enter && selected==0) captureChannel=captureChannel%13+1;
+            else if (enter) {
+                if(portal.running() || probe.running() || networkTools.busy() || lanScanner.busy() || sshTerminal.busy()) {
+                    notice("Stop the other Wi-Fi tool first.",Screen::CaptureSetup);break;
+                }
+                scanner.stop();
+                if(!storage.begin()) { notice("Insert an SD card and try again.",Screen::CaptureSetup);break; }
+                packetCapture.start(captureChannel);show(Screen::CaptureLive);
+            }
+            break;
+        case Screen::CaptureLive:
+            if(enter || escape || back || key=='s' || key=='S') {
+                if(packetCapture.busy()) packetCapture.stop();
+                else show(Screen::CaptureSetup);
             }
             break;
         case Screen::Channels:
@@ -607,6 +658,15 @@ void pollKeyboard() {
     const auto before = previous;
     previous = current; oldEnter = keys.enter; oldDelete = keys.del;
     const bool tab=keys.tab && !oldTab; oldTab=keys.tab;
+    if(screen==Screen::PythonOutput) {
+        if(keys.ctrl && ((current['c'] && !before['c']) || (current['C'] && !before['C']))) {pythonRunner.stop();return;}
+        if(keys.fn && ((current[';'] && !before[';']) || (current['.'] && !before['.']))) {
+            if(current[';']) pythonScroll=std::min(pythonScroll+1,pythonRunner.terminal().historyCount());
+            else if(pythonScroll) --pythonScroll;
+            return;
+        }
+        if(enter || del) pythonScroll=0;
+    }
     if(screen==Screen::SshSession && sshTerminal.status().phase==SshPhase::Active) {
         if(keys.fn && del) { sshTerminal.stop();show(Screen::SshSetup);return; }
         if(enter) { sshTerminal.send("\r",1);terminalScroll=0; }
@@ -641,6 +701,8 @@ void render() {
     view.carouselPosition = carousel.position(millis());
     view.radar = &scanner.snapshot();
     view.signal=&signalHistory; view.changes=&networkChanges; view.network=&networkTools.status();
+    view.scripts=&pythonRunner.scripts();view.python=&pythonRunner.status();view.pythonTerminal=&pythonRunner.terminal();view.pythonScroll=pythonScroll;
+    view.capture=&packetCapture.status();view.captureChannel=captureChannel;
     view.sshConfig=&sshConfig;view.sshStatus=&sshTerminal.status();view.terminal=&sshTerminal.terminal();
     view.sshInputLabel=sshFieldLabel(sshField);view.sshInputSecret=sshField==4;view.terminalScroll=terminalScroll;
     view.rangeScan=&lanScanner.range(); view.portScan=&lanScanner.ports(); view.scanBusy=lanScanner.busy();
@@ -797,6 +859,8 @@ void loop() {
     const uint32_t sent=networkTools.status().ping.sent, received=networkTools.status().ping.received;
     networkTools.poll();
     const auto& currentNetwork=networkTools.status();
+    pythonRunner.poll();
+    packetCapture.poll();
     lanScanner.poll();
     sshTerminal.poll();
     if(toolHomeIndex==SshHome && networkPhase==NetworkPhase::Connecting && currentNetwork.phase==NetworkPhase::Ready && sshConfig.host.empty())

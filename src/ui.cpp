@@ -141,7 +141,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         }
         case Screen::Home: {
             title(c, "PORTALIS");
-            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "IP range scan", "Host port scan", "SSH terminal", "Settings"};
+            const char* labels[] = {"Portal", "Wi-Fi radar", "KARMA", "Channels", "Signal tracker", "Diagnostics", "Ping monitor", "Network changes", "IP range scan", "Host port scan", "SSH terminal", "Packet capture", "Python scripts", "Settings"};
             c.setClipRect(0, 26, 240, 66);
             for (int icon = 0; icon < CarouselMotion::count; ++icon) {
                 float delta = icon - v.carouselPosition;
@@ -225,6 +225,21 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                     c.fillRoundRect(cx-21,cy-16,42,32,3,fill);
                     c.drawLine(cx-14,cy-6,cx-6,cy,FG);c.drawLine(cx-6,cy,cx-14,cy+6,FG);
                     if((v.now/500)%2==0) c.drawLine(cx,cy+8,cx+13,cy+8,ink);
+                } else if (icon == CaptureHome) {
+                    // Packets travel down into an SD card.
+                    c.fillRoundRect(cx-13,cy-3,26,26,3,ink);
+                    c.fillRect(cx-9,cy+6,18,13,fill);
+                    for(int pin=0;pin<3;++pin) c.fillRect(cx-8+pin*6,cy,3,5,FG);
+                    for(int packet=0;packet<3;++packet) {
+                        const int y=cy-24+((v.now/70+packet*7)%20);
+                        c.fillRect(cx-15+packet*12,y,6,3,packet==1 ? FG : ink);
+                    }
+                } else if (icon == PythonHome) {
+                    c.fillRoundRect(cx-21,cy-19,42,38,4,ink);
+                    c.fillRoundRect(cx-19,cy-17,38,34,3,fill);
+                    text(c,".py",cx-14,cy-12,FG,1.5f);
+                    c.drawLine(cx-12,cy+6,cx-7,cy+10,ink);c.drawLine(cx-7,cy+10,cx-12,cy+14,ink);
+                    if((v.now/500)%2==0) c.fillRect(cx,cy+12,12,2,FG);
                 } else if (icon == SettingsHome) {
                     const float rotation=(v.now%12000)*(6.28318530718f/12000.0f);
                     auto gear=[&](int x,int y,int root,int tip,int teeth,float angle) {
@@ -341,6 +356,49 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
             title(c,"PING TARGET"); text(c,"IPv4 address:",6,33,MUTED,1.5f);
             text(c,v.draft,6,56,ACCENT,2);
             footer(c,"Enter Apply Esc Cancel"); break;
+        case Screen::PythonScripts: {
+            title(c,"PYTHON");
+            const auto& scripts=v.scripts ? *v.scripts : emptyView<ScriptCatalog>();
+            if(!scripts.count) wrapped(c,*scripts.message ? scripts.message : "Put .py files in /scripts on SD",32,3);
+            else {
+                const int first=std::max(0,v.selected-3);
+                for(int row=0;row<4 && first+row<static_cast<int>(scripts.count);++row)
+                    selectedRow(c,scripts.names[first+row],row,first+row==v.selected,elapsed);
+            }
+            footer(c,scripts.limited ? "First 64 | ENT Run R Scan" : ";/. File ENT Run R Scan");break;
+        }
+        case Screen::PythonOutput: {
+            const auto& state=v.python ? *v.python : emptyView<PythonStatus>();
+            const char* phase=state.phase==PythonPhase::Running ? (state.input ? "INPUT" : "RUN") :
+                state.phase==PythonPhase::Stopping ? "STOPPING" : state.phase==PythonPhase::Failed ? "ERROR" :
+                state.phase==PythonPhase::Stopped ? "STOPPED" : "DONE";
+            text(c,std::string("PY ")+phase+" "+shorten(state.name,24),0,0,ACCENT,1);
+            c.drawFastHLine(0,10,240,PANEL);
+            if(v.pythonTerminal) for(int row=0;row<TerminalBuffer::rows;++row)
+                text(c,v.pythonTerminal->line(row,v.pythonScroll),0,12+row*8,FG,1);
+            if(state.phase==PythonPhase::Failed && v.pythonTerminal && v.pythonTerminal->line(0)[0]==' ')
+                wrapped(c,state.message,32,4);
+            text(c,"Esc Stop/Back  Ctrl+C  Fn+up/dn Scroll",0,126,MUTED,1);break;
+        }
+        case Screen::CaptureSetup:
+            title(c,"CAPTURE");
+            selectedRow(c,"Channel: "+std::to_string(v.captureChannel),0,v.selected==0,elapsed);
+            selectedRow(c,"Start capture",1,v.selected==1,elapsed);
+            text(c,"PCAP to SD /captures",6,79,MUTED,1.5f);
+            text(c,"2.4 GHz | 32 MB limit",6,98,MUTED,1);
+            footer(c,";/. Move ,/ Channel ENT");break;
+        case Screen::CaptureLive: {
+            title(c,"CAPTURE");
+            const auto& state=v.capture ? *v.capture : emptyView<CaptureStatus>();
+            const bool active=state.phase==CapturePhase::Capturing, saving=state.phase==CapturePhase::Saving;
+            text(c,std::string(active ? "REC" : saving ? "SAVING" : state.phase==CapturePhase::Failed ? "ERROR" : "SAVED")+
+                " CH "+std::to_string(state.channel)+"  "+elapsedLabel(state.seconds),6,29,active ? GOLD : FG,1.5f);
+            text(c,"Packets "+countLabel(state.packets)+" Drop "+countLabel(state.dropped),6,48,FG,1.5f);
+            text(c,std::to_string(state.bytes/1024)+" KB",6,66,MUTED,1.5f);
+            ticker(c,state.path,6,84,228,elapsed,ACCENT,1);
+            ticker(c,state.message,6,101,228,elapsed,MUTED,1);
+            footer(c,active ? "Enter / S Stop & save" : saving ? "Finishing SD writes..." : "Enter / Esc Back");break;
+        }
         case Screen::SshSetup: {
             title(c,"SSH TERMINAL");
             const auto& net=v.network ? *v.network : emptyView<NetworkStatus>();
@@ -702,6 +760,6 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
         case Screen::Error:
             title(c, "NOTICE"); wrapped(c, v.error, 29, 4, GOLD); footer(c, "Enter / Esc Back"); break;
     }
-    if (v.screen != Screen::Splash && !(v.screen==Screen::SshSession && v.sshStatus && v.sshStatus->phase==SshPhase::Active)) battery(c, v.batteryPercent);
+    if (v.screen != Screen::Splash && v.screen != Screen::PythonOutput && !(v.screen==Screen::SshSession && v.sshStatus && v.sshStatus->phase==SshPhase::Active)) battery(c, v.batteryPercent);
 }
 } // namespace portalis

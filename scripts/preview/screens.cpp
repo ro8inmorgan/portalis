@@ -67,7 +67,17 @@ int main() {
     save("ssh-host-key",Screen::SshSession);
     const std::string shell="Welcome to demo-server\r\n\r\nrobin@demo-server:~$ uname -s\r\nLinux\r\nrobin@demo-server:~$ uptime\r\n 14:32:10 up 3 days, load average: 0.12\r\nrobin@demo-server:~$ ls\r\nprojects  notes  backups\r\nrobin@demo-server:~$ ";
     terminal.feed(shell.data(),shell.size());sshStatus.phase=SshPhase::Active;save("ssh-terminal",Screen::SshSession);
-    for(const auto& icon: {std::pair<int,const char*>{PortScanHome,"port-scan-icon"},{SettingsHome,"settings-icon"},{SshHome,"ssh-icon"}}) {
+    CaptureStatus capture;view.capture=&capture;view.captureChannel=6;view.selected=1;
+    save("capture-setup",Screen::CaptureSetup);
+    capture.phase=CapturePhase::Capturing;capture.channel=6;capture.packets=12345;capture.dropped=17;capture.bytes=2413500;capture.seconds=83;
+    std::strcpy(capture.path,"/captures/cap-01234567.pcap");save("capture-live",Screen::CaptureLive);
+    ScriptCatalog scripts;scripts.names[0]="counter.py";scripts.names[1]="greeting.py";scripts.names[2]="hello.py";scripts.count=3;
+    view.scripts=&scripts;view.selected=2;save("python-scripts",Screen::PythonScripts);
+    PythonStatus python;python.phase=PythonPhase::Done;std::strcpy(python.name,"hello.py");
+    TerminalBuffer pythonTerminal;const std::string pythonOutput="Hello from MicroPython!\r\nSquares: [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]\r\nSquare root of 81: 9.0\r\nPython heap free: 48720 bytes\r\n";
+    pythonTerminal.feed(pythonOutput.data(),pythonOutput.size());view.python=&python;view.pythonTerminal=&pythonTerminal;
+    save("python-output",Screen::PythonOutput);
+    for(const auto& icon: {std::pair<int,const char*>{PortScanHome,"port-scan-icon"},{SettingsHome,"settings-icon"},{SshHome,"ssh-icon"},{CaptureHome,"capture-icon"},{PythonHome,"python-icon"}}) {
         view.selected=icon.first;view.carouselPosition=icon.first;save(icon.second,Screen::Home);
     }
     CarouselMotion motion; motion.reset(0,0);

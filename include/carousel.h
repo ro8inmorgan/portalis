@@ -4,7 +4,7 @@
 
 namespace portalis {
 enum HomeItem { PortalHome, RadarHome, KarmaHome, ChannelsHome, SignalHome,
-                DiagnosticsHome, PingHome, ChangesHome, RangeScanHome, PortScanHome, SshHome, SettingsHome };
+                DiagnosticsHome, PingHome, ChangesHome, RangeScanHome, PortScanHome, SshHome, CaptureHome, PythonHome, SettingsHome };
 class CarouselMotion {
     float from_ = 0, target_ = 0;
     uint32_t started_ = 0;
