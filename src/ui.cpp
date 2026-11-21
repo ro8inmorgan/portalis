@@ -607,7 +607,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 "Start portal", "Submissions"}};
             const int first = std::max(0, v.selected - 3);
             for (int row = 0; row < 4 && first + row < 4; ++row)
-                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed, first + row == 11 ? 1.5f : 2);
+                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed);
             footer(c, ";/. Move ENT Select H Log"); break;
         }
         case Screen::Radar:
@@ -724,16 +724,16 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 std::string("Menu sounds: ") + (settings.sounds ? "On" : "Off"),
                 "Volume: " + std::to_string(settings.volume) + "%",
                 std::string("Event sounds: ") + (settings.eventSounds ? "On" : "Off"),
-                "Breathing: " + std::string(kLedColors[settings.ledColors[0]].name),
+                "Default: " + std::string(kLedColors[settings.ledColors[0]].name),
                 "Connect: " + std::string(kLedColors[settings.ledColors[1]].name),
                 "Confirm: " + std::string(kLedColors[settings.ledColors[2]].name),
                 "Disconnect: " + std::string(kLedColors[settings.ledColors[3]].name),
                 "LED mode: " + std::string(kLedAnimations[settings.ledAnimation]),
-                std::string("Screen always on: ") + (settings.screenAlwaysOn ? "On" : "Off")
+                std::string("Screen AO: ") + (settings.screenAlwaysOn ? "On" : "Off")
             }};
             const int first = std::max(0, v.selected - 3);
             for (int row = 0; row < 4 && first + row < kSettingsCount; ++row)
-                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed, first + row == 11 ? 1.5f : 2);
+                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed);
             footer(c, ";/. Move ,/ Set ESC Save"); break;
         }
         case Screen::Names: {
