@@ -1,6 +1,6 @@
 # Portalis
 
-A WIFI, networking, pentesting, diagnosing toolset firmware for the Cardputer Adv to test, diagnose and learn about your own network environment
+A WIFI, networking, pentesting, diagnosing toolset firmware for the Cardputer Adv to test, diagnose and analyze your own network environment
 
 ## Disclaimer
 
