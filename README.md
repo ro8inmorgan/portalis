@@ -18,7 +18,7 @@ Rendered from the firmware UI using sample data at the display's 240×135 resolu
 | --- | --- |
 | ![Live client and confirmation counters](docs/screenshots/dashboard.png) | ![Nearby access points on the radar](docs/screenshots/radar.png) |
 | **KARMA setup** | **Device settings** |
-| ![Template and timeout selection](docs/screenshots/karma.png) | ![UI colors and LED brightness settings](docs/screenshots/settings.png) |
+| ![Template and timeout selection](docs/screenshots/karma.png) | ![LED options and Screen always on setting](docs/screenshots/settings.png) |
 | **Main menu** | **Saved feedback** |
 | ![Main menu carousel](docs/screenshots/home.png) | ![Viewing a saved form submission](docs/screenshots/submission.png) |
 | **Channel analyzer** | **Signal tracker** |
@@ -307,9 +307,11 @@ The Wi-Fi network is open and SD logs are unencrypted. Use feedback forms approp
 - Live LED previews in Settings, including while the portal is stopped.
 - Menu click sounds and separate connection, confirmation, and disconnect chimes in both Portal and KARMA. Successful submission saves trigger the confirmation chime.
 - Independent menu/event sound toggles and volume from 0–100%.
+- The screen turns off after **10 seconds without keyboard activity** by default. Press any key to wake it; that first press only wakes the screen. Running network tools continue in the background.
+- Enable **Screen always on** in Settings to disable the timeout.
 - Device settings persist across reboots without needing an SD card.
 
-On Cardputer ADV, LED power shares the display-backlight pin: enabled LED effects use full display brightness throughout the app, returning to normal brightness when LED mode is Off or brightness is 0%. Battery percentage is a voltage-based estimate, not a precise fuel gauge or charging indicator.
+On Cardputer ADV, LED power shares the display-backlight pin: enabled LED effects use full display brightness throughout the app, returning to normal brightness when LED mode is Off or brightness is 0%. The RGB LED also goes dark while the screen is off because they share power. Battery percentage is a voltage-based estimate, not a precise fuel gauge or charging indicator.
 
 ## Controls
 

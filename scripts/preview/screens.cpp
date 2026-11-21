@@ -22,7 +22,7 @@ int main() {
     ProbeConfig probe; probe.noticePath="/feedback.html"; probe.timeoutSeconds=120;
     view.probeConfig=&probe; view.selected=1;
     save("karma", Screen::Probe);
-    view.selected=2;
+    view.selected=11;
     save("settings", Screen::Settings);
     SubmissionView submission; submission.event={1,42};
     submission.lines={"rating:","5", "feedback:","Easy to connect!"};

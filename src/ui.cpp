@@ -35,12 +35,12 @@ void footer(M5Canvas& c, const std::string& value) {
     c.fillRect(0, 116, W, 19, PANEL); text(c, value, 6, 120, MUTED, 1.5f);
 }
 void title(M5Canvas& c, const char* label) { text(c, label, 6, 4, ACCENT); c.drawFastHLine(6, 23, 228, PANEL); }
-void selectedRow(M5Canvas& c, const std::string& value, int row, bool active, uint32_t time) {
+void selectedRow(M5Canvas& c, const std::string& value, int row, bool active, uint32_t time, float size = 2) {
     const int y = 28 + row * 21;
     if (active) c.fillRoundRect(3, y - 2, 234, 20, 3, ACCENT);
     text(c, active ? ">" : " ", 6, y, active ? BG : MUTED);
-    if (active) ticker(c, value, 22, y, 210, time, BG);
-    else text(c, shorten(value, 17), 22, y, FG);
+    if (active) ticker(c, value, 22, y, 210, time, BG, size);
+    else text(c, shorten(value, size == 2 ? 17 : 23), 22, y, FG, size);
 }
 void wrapped(M5Canvas& c, const std::string& value, int y, int maxRows, uint16_t color = FG) {
     size_t offset = 0;
@@ -607,7 +607,7 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 "Start portal", "Submissions"}};
             const int first = std::max(0, v.selected - 3);
             for (int row = 0; row < 4 && first + row < 4; ++row)
-                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed);
+                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed, first + row == 11 ? 1.5f : 2);
             footer(c, ";/. Move ENT Select H Log"); break;
         }
         case Screen::Radar:
@@ -728,11 +728,12 @@ void drawUi(M5Canvas& c, const ViewModel& v) {
                 "Connect: " + std::string(kLedColors[settings.ledColors[1]].name),
                 "Confirm: " + std::string(kLedColors[settings.ledColors[2]].name),
                 "Disconnect: " + std::string(kLedColors[settings.ledColors[3]].name),
-                "LED mode: " + std::string(kLedAnimations[settings.ledAnimation])
+                "LED mode: " + std::string(kLedAnimations[settings.ledAnimation]),
+                std::string("Screen always on: ") + (settings.screenAlwaysOn ? "On" : "Off")
             }};
             const int first = std::max(0, v.selected - 3);
             for (int row = 0; row < 4 && first + row < kSettingsCount; ++row)
-                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed);
+                selectedRow(c, labels[first + row], row, first + row == v.selected, elapsed, first + row == 11 ? 1.5f : 2);
             footer(c, ";/. Move ,/ Set ESC Save"); break;
         }
         case Screen::Names: {

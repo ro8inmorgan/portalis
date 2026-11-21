@@ -99,6 +99,9 @@ void test_animated_frames_fit_screen() {
 }
 void test_settings_controls_bounds_and_color_preview() {
     UiSettings settings;
+    TEST_ASSERT_FALSE(settings.screenAlwaysOn);
+    settings.adjust(11,1);TEST_ASSERT_TRUE(settings.screenAlwaysOn);
+    settings.adjust(11,-1);TEST_ASSERT_FALSE(settings.screenAlwaysOn);
     settings.adjust(0, -1); TEST_ASSERT_EQUAL(5, settings.accent);
     settings.adjust(0, 1); TEST_ASSERT_EQUAL(0, settings.accent);
     settings.adjust(1, -1); TEST_ASSERT_EQUAL(2, settings.background);
@@ -422,4 +425,18 @@ void test_workbench_screens_and_icons_fit() {
     for(int icon:{SurveyHome,TransferHome,TcpHome}) {view.screen=Screen::Home;view.selected=icon;view.carouselPosition=icon;for(uint32_t now=0;now<4000;now+=100) {view.now=now;drawUi(canvas,view);}}
     TEST_ASSERT_EQUAL(0,canvas.violations);
 }
-int main() { UNITY_BEGIN(); RUN_TEST(test_workbench_screens_and_icons_fit); RUN_TEST(test_python_picker_and_output_fit); RUN_TEST(test_capture_screens_and_icon_fit); RUN_TEST(test_ssh_screens_fit_and_password_is_masked); RUN_TEST(test_lan_scan_screens_and_main_menu_icons_fit); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }
+void test_screen_idle_timeout_wake_hold_always_on_and_wrap() {
+    ScreenIdle idle;idle.reset(100);
+    TEST_ASSERT_FALSE(idle.update(10099,false,false));TEST_ASSERT_FALSE(idle.asleep());
+    TEST_ASSERT_TRUE(idle.update(10100,false,false));TEST_ASSERT_TRUE(idle.asleep());
+    TEST_ASSERT_TRUE(idle.update(10101,true,false));TEST_ASSERT_FALSE(idle.asleep());
+    TEST_ASSERT_TRUE(idle.update(25000,true,false)); // Wake key and chords remain consumed until release.
+    TEST_ASSERT_FALSE(idle.update(25001,false,false));
+    TEST_ASSERT_FALSE(idle.update(25002,true,false)); // Next press reaches the application.
+    TEST_ASSERT_FALSE(idle.update(35001,false,false));TEST_ASSERT_TRUE(idle.update(35002,false,false));
+    TEST_ASSERT_FALSE(idle.update(60000,false,true));TEST_ASSERT_FALSE(idle.asleep());
+    TEST_ASSERT_FALSE(idle.update(90000,false,true));
+    TEST_ASSERT_FALSE(idle.update(99999,false,false));TEST_ASSERT_TRUE(idle.update(100000,false,false));
+    idle.reset(UINT32_MAX-4999);TEST_ASSERT_FALSE(idle.update(4999,false,false));TEST_ASSERT_TRUE(idle.update(5000,false,false));
+}
+int main() { UNITY_BEGIN(); RUN_TEST(test_screen_idle_timeout_wake_hold_always_on_and_wrap); RUN_TEST(test_workbench_screens_and_icons_fit); RUN_TEST(test_python_picker_and_output_fit); RUN_TEST(test_capture_screens_and_icon_fit); RUN_TEST(test_ssh_screens_fit_and_password_is_masked); RUN_TEST(test_lan_scan_screens_and_main_menu_icons_fit); RUN_TEST(test_app_led_idle_everywhere_and_event_priority); RUN_TEST(test_app_led_off_zero_wrap_and_portal_resume); RUN_TEST(test_wifi_tools_screens_fit); RUN_TEST(test_probe_screens_fit); RUN_TEST(test_carousel_animation_wrap_and_layout); RUN_TEST(test_radar_and_list_fit_dense_and_empty_scans); RUN_TEST(test_led_color_settings_and_animation_modes); RUN_TEST(test_battery_indicator_fits_all_headers); RUN_TEST(test_event_melodies_priority_mute_and_reset); RUN_TEST(test_settings_controls_bounds_and_color_preview); RUN_TEST(test_led_brightness_zero_and_full); RUN_TEST(test_counter_pulse_changes_expire_and_reset); RUN_TEST(test_led_breath_events_priority_and_stop); RUN_TEST(test_animated_frames_fit_screen); RUN_TEST(test_submission_views_fit); RUN_TEST(test_ap_presets_all_pages_fit); RUN_TEST(test_all_screens_fit_large_text); RUN_TEST(test_empty_and_stopped_views_fit); RUN_TEST(test_counter_magnitudes_fit); return UNITY_END(); }

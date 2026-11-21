@@ -82,6 +82,7 @@ PageTemplate page;
 BrowserPage browser;
 PortalConfig portalConfig;
 UiSettings uiSettings;
+ScreenIdle screenIdle;
 Screen settingsReturn = Screen::Setup;
 Screen templatesReturn = Screen::Setup;
 std::optional<std::string> probeTemplatePath;
@@ -122,6 +123,7 @@ bool saveSettings() {
         preferences.putUChar("volume", uiSettings.volume) == 1 &&
         preferences.putBool("menu_sounds", uiSettings.sounds) == 1 &&
         preferences.putBool("event_sounds", uiSettings.eventSounds) == 1 &&
+        preferences.putBool("screen_on", uiSettings.screenAlwaysOn) == 1 &&
         preferences.putUChar("led_idle", uiSettings.ledColors[0]) == 1 &&
         preferences.putUChar("led_join", uiSettings.ledColors[1]) == 1 &&
         preferences.putUChar("led_confirm", uiSettings.ledColors[2]) == 1 &&
@@ -774,6 +776,13 @@ void pollKeyboard() {
     const auto before = previous;
     previous = current; oldEnter = keys.enter; oldDelete = keys.del;
     const bool tab=keys.tab && !oldTab; oldTab=keys.tab;
+    const bool wasAsleep=screenIdle.asleep();
+    const bool consume=screenIdle.update(millis(),M5Cardputer.Keyboard.isPressed()!=0,uiSettings.screenAlwaysOn);
+    if(screenIdle.asleep()!=wasAsleep) {
+        if(screenIdle.asleep()) {neopixelWrite(21,0,0,0);M5.Display.sleep();}
+        else M5.Display.wakeup();
+    }
+    if(consume)return;
     if(screen==Screen::Editor) {
         if(keys.ctrl) {
             if((current['s']&&!before['s']) || (current['S']&&!before['S'])) {saveEditor(scriptEditor);return;}
@@ -898,7 +907,8 @@ void render() {
     const auto animation = static_cast<LedAnimation>(uiSettings.ledAnimation);
     ledFeedback.observePortal(view.clients,view.count,view.session,view.running,view.now);
     LedColor color = ledFeedback.render(view.now,uiSettings.ledBrightness,palette,animation);
-    const bool previewLed = screen == Screen::Settings && (selected == 2 || selected >= 6);
+    if(screenIdle.asleep())return;
+    const bool previewLed = screen == Screen::Settings && (selected == 2 || (selected >= 6 && selected <= 10));
     if (previewLed) {
         if (selected >= 7 && selected <= 9) {
             color = ledBrightness(kLedColors[uiSettings.ledColors[selected - 6]].color, uiSettings.ledBrightness);
@@ -955,6 +965,7 @@ void setup() {
         uiSettings.volume = preferences.getUChar("volume", 30);
         uiSettings.sounds = preferences.getBool("menu_sounds", true);
         uiSettings.eventSounds = preferences.getBool("event_sounds", true);
+        uiSettings.screenAlwaysOn = preferences.getBool("screen_on", false);
         uiSettings.ledColors[0] = preferences.getUChar("led_idle", 0);
         uiSettings.ledColors[1] = preferences.getUChar("led_join", 1);
         uiSettings.ledColors[2] = preferences.getUChar("led_confirm", 2);
@@ -981,6 +992,7 @@ void setup() {
         return true;
     });
     screenSince = millis();
+    screenIdle.reset(screenSince);
     render();
     Serial.printf("Portalis ready: %dx%d landscape\n", M5.Display.width(), M5.Display.height());
 }

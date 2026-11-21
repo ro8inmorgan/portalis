@@ -19,12 +19,12 @@ inline constexpr std::array<LedOption, 8> kLedColors{{
     {"Violet", {160,0,255}}, {"Red", {255,0,0}}, {"White", {255,255,255}}, {"Mint", {64,255,160}}
 }};
 inline constexpr std::array<const char*, 5> kLedAnimations{{"Breathing", "Steady", "Blink", "Rainbow", "Off"}};
-inline constexpr int kSettingsCount = 11;
+inline constexpr int kSettingsCount = 12;
 struct UiSettings {
     uint8_t accent = 0, background = 0, ledBrightness = 80, volume = 30;
     std::array<uint8_t, 4> ledColors{{0, 1, 2, 3}};
     uint8_t ledAnimation = 0;
-    bool sounds = true, eventSounds = true;
+    bool sounds = true, eventSounds = true, screenAlwaysOn = false;
     void validate() {
         if (accent >= kAccents.size()) accent = 0;
         if (background >= kBackgrounds.size()) background = 0;
@@ -40,6 +40,7 @@ struct UiSettings {
         else if (row == 3) sounds = !sounds;
         else if (row == 5) eventSounds = !eventSounds;
         else if (row >= 6 && row <= 9) ledColors[row - 6] = (ledColors[row - 6] + kLedColors.size() + direction) % kLedColors.size();
+        else if (row == 11) screenAlwaysOn = !screenAlwaysOn;
         else if (row == 10) ledAnimation = (ledAnimation + kLedAnimations.size() + direction) % kLedAnimations.size();
         else if (row == 2 || row == 4) {
             auto& value = row == 2 ? ledBrightness : volume;
@@ -52,5 +53,23 @@ struct UiSettings {
                 kLedColors[ledColors[2] % kLedColors.size()].color, kLedColors[ledColors[3] % kLedColors.size()].color};
     }
     uint8_t speakerVolume() const { return static_cast<uint8_t>((volume > 100 ? 100 : volume) * 255 / 100); }
+};
+// Keyboard activity alone controls display idle time; background tools keep running.
+class ScreenIdle {
+    uint32_t lastActivity_ = 0;
+    bool asleep_ = false, consumeUntilRelease_ = false;
+public:
+    void reset(uint32_t now) {lastActivity_=now;asleep_=consumeUntilRelease_=false;}
+    bool asleep() const {return asleep_;}
+    bool update(uint32_t now, bool pressed, bool alwaysOn) {
+        if(pressed) {
+            lastActivity_=now;
+            if(asleep_)consumeUntilRelease_=true;
+            asleep_=false;
+        } else consumeUntilRelease_=false;
+        if(alwaysOn) {lastActivity_=now;asleep_=false;}
+        else if(!pressed && uint32_t(now-lastActivity_)>=10000)asleep_=true;
+        return asleep_ || consumeUntilRelease_;
+    }
 };
 } // namespace portalis
