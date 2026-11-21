@@ -390,7 +390,7 @@ Open **Wi-Fi survey** and press **Enter** to start or stop. Each completed scan 
 
 ### Local file-transfer page
 
-Open **File transfer**, join Wi-Fi, and press **Enter**. On another device on the same reachable LAN, open the displayed HTTP address and sign in as **portalis** with the temporary code shown on the Cardputer.
+Open **File transfer**, join Wi-Fi, and press **Enter**. On another device on the same reachable LAN, open the displayed HTTP address and sign in as **portalis** with the temporary five-character code shown on the Cardputer.
 
 - Upload `.py` files to `/scripts` and `.html`/`.htm` templates to the SD root, up to **32 KiB** each. Replacing an existing file requires the checkbox.
 - Download scripts, root-level templates, `/captures/*.pcap`, and `/surveys/*.csv`; browse 64 files per page.

@@ -80,7 +80,7 @@ int main() {
     SurveyStatus survey;survey.recording=true;survey.sweeps=24;survey.rows=96;survey.seconds=125;
     std::strcpy(survey.path,"/surveys/survey-01234567.csv");view.survey=&survey;view.selected=0;save("survey",Screen::Survey);
     TransferStatus transfer;transfer.running=true;transfer.uploads=2;transfer.downloads=3;
-    std::strcpy(transfer.address,"192.168.1.42");std::strcpy(transfer.code,"a1b2c3d4e5f60718");view.transfer=&transfer;save("file-transfer",Screen::Transfer);
+    std::strcpy(transfer.address,"192.168.1.42");std::strcpy(transfer.code,"K7M4X");view.transfer=&transfer;save("file-transfer",Screen::Transfer);
     ScriptEditor editor;editor.reset("hello.py","# Hello from Cardputer\nfor i in range(5):\n    print('Count:', i)\n");editor.cursor=editor.text.size();editor.reveal();view.editor=&editor;save("script-editor",Screen::Editor);
     SshProfiles profiles;profiles.count=2;profiles.entries[0]=ssh;profiles.entries[1]=ssh;profiles.entries[1].host="192.168.1.20";view.sshProfiles=&profiles;save("ssh-hosts",Screen::SshHosts);
     view.actionPort=22;save("port-actions",Screen::PortActions);

@@ -412,7 +412,7 @@ void test_workbench_screens_and_icons_fit() {
     M5Canvas canvas;ViewModel view;SurveyStatus survey;TransferStatus transfer;ScriptEditor editor;SshProfiles profiles;TcpConfig tcp;TcpStatus status;TerminalBuffer terminal;NetworkStatus network;
     view.survey=&survey;view.transfer=&transfer;view.editor=&editor;view.sshProfiles=&profiles;view.tcpConfig=&tcp;view.tcpStatus=&status;view.tcpTerminal=&terminal;view.network=&network;
     network.phase=NetworkPhase::Ready;survey.rows=survey.sweeps=survey.missed=UINT32_MAX;survey.seconds=UINT32_MAX;
-    std::strcpy(survey.path,"/surveys/survey-01234567.csv");std::strcpy(transfer.address,"192.168.100.100");std::strcpy(transfer.code,"0123456789abcdef");transfer.uploads=transfer.downloads=UINT32_MAX;
+    std::strcpy(survey.path,"/surveys/survey-01234567.csv");std::strcpy(transfer.address,"192.168.100.100");std::strcpy(transfer.code,"Z9K7W");transfer.uploads=transfer.downloads=UINT32_MAX;
     tcp.host="192.168.100.100";tcp.port=65535;view.actionPort=65535;
     profiles.count=8;for(auto& entry:profiles.entries) {entry.host=tcp.host;entry.user="test-user";}
     editor.reset("long-script-name.py","");for(int row=0;row<25;++row)editor.insert(std::string(70,'x')+"\n");editor.move(0,-1);

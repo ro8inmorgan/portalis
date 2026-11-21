@@ -84,7 +84,11 @@ void FileTransfer::uploadChunk() {
 }
 bool FileTransfer::start(const char* address) {
     if(busy() || WiFi.status()!=WL_CONNECTED || SD.cardType()==CARD_NONE)return false;
-    status_={};std::snprintf(status_.address,sizeof(status_.address),"%s",address);std::snprintf(status_.code,sizeof(status_.code),"%08lx%08lx",static_cast<unsigned long>(esp_random()),static_cast<unsigned long>(esp_random()));
+    status_={};std::snprintf(status_.address,sizeof(status_.address),"%s",address);
+    // Five easy-to-type characters; omit ambiguous 0/O and 1/I.
+    constexpr char alphabet[]="23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    uint32_t random=esp_random();
+    for(size_t i=0;i<sizeof(status_.code)-1;++i) {status_.code[i]=alphabet[random&31];random>>=5;}
     configure();cancel_=false;uploads_=downloads_=0;uploadDone_=uploadOk_=false;pending_=true;worker_=true;status_.running=true;
     if(xTaskCreate(task,"file-transfer",8192,this,1,nullptr)!=pdPASS) {worker_=false;pending_=false;status_.running=false;std::snprintf(status_.message,sizeof(status_.message),"Not enough memory");return false;}return true;
 }

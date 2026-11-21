@@ -61,6 +61,8 @@ void upload(const char* name,const char* text,bool token=true,bool replace=false
 }
 void test_transfer_auth_paths_upload_and_overwrite() {
     WiFi.currentMode=WIFI_STA;WiFi.connectionStatus=WL_CONNECTED;FileTransfer transfer;TEST_ASSERT_TRUE(transfer.start("192.168.1.42"));auto& server=*fakeServer;
+    TEST_ASSERT_EQUAL(5,std::strlen(transfer.status().code));
+    TEST_ASSERT_EQUAL(5,std::strspn(transfer.status().code,"23456789ABCDEFGHJKLMNPQRSTUVWXYZ"));
     server.routes["/"].handler();TEST_ASSERT_EQUAL(401,server.code);
     server.user="portalis";server.password=transfer.status().code;server.routes["/"].handler();TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_EQUAL(std::string::npos,server.response.find("@@TOKEN@@"));
     upload("test.py","print(1)");TEST_ASSERT_EQUAL(200,server.code);TEST_ASSERT_EQUAL_STRING("print(1)",SD.nodes.at("/scripts/test.py")->content.c_str());

@@ -6,7 +6,7 @@
 #include "ssh_model.h"
 namespace portalis {
 struct SurveyStatus {bool recording=false,failed=false;uint32_t sweeps=0,rows=0,missed=0,seconds=0;char path[64]={},message[80]={};};
-struct TransferStatus {bool running=false,stopping=false;uint32_t uploads=0,downloads=0;char address[32]={},code[17]={},message[96]={};};
+struct TransferStatus {bool running=false,stopping=false;uint32_t uploads=0,downloads=0;char address[32]={},code[6]={},message[96]={};};
 struct TcpConfig {std::string host;uint16_t port=23;bool telnet=true;};
 enum class TcpPhase {Idle,Connecting,Active,Stopping,Closed,Failed};
 struct TcpStatus {TcpPhase phase=TcpPhase::Idle;char message[80]={};};
